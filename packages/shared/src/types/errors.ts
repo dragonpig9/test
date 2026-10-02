@@ -1,0 +1,40 @@
+/** Stable error codes. The frontend shows `message`; debugging uses `code` + `module`. */
+export type ErrorCode =
+  | 'VALIDATION_FAILED'
+  | 'UNAUTHENTICATED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'INVALID_CREDENTIALS'
+  | 'INVALID_TRANSITION'
+  | 'MEMBER_LEFT'
+  | 'INVITATION_INVALID'
+  | 'TERMS_NOT_ACCEPTED'
+  | 'VOUCH_LIMIT_REACHED'
+  | 'VOUCH_EXISTS'
+  | 'VOUCH_NOT_ALLOWED'
+  | 'STRENGTHEN_NOT_ALLOWED'
+  | 'CREDIBILITY_TOO_LOW'
+  | 'CREDIT_FLOOR_EXCEEDED'
+  | 'GUARANTOR_REQUIRED'
+  | 'CATEGORY_RESTRICTED'
+  | 'TERMS_VERSION_MISMATCH'
+  | 'GIFT_ONLY_FROM_RECIPIENT'
+  | 'SERVICE_NOT_YET_DUE'
+  | 'SCHEDULE_IN_PAST'
+  | 'ALREADY_DONE'
+  | 'PUNCTUALITY_NOT_AGREED'
+  | 'NOT_ASSIGNED'
+  | 'DISPUTE_NOT_OPEN'
+  | 'DEMO_DISABLED'
+  | 'CONFLICT'
+  | 'INTERNAL_ERROR';
+
+export interface ApiErrorBody {
+  error: {
+    code: ErrorCode;
+    message: string;
+    module: string;
+    correlationId?: string;
+    details?: Record<string, unknown>;
+  };
+}

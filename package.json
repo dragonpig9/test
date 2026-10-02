@@ -1,0 +1,29 @@
+{
+  "name": "commonhours",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CommonHours — community service exchange with time credits, trust paths and attestation.",
+  "workspaces": [
+    "packages/shared",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,green \"npm run dev -w @commonhours/api\" \"npm run dev -w @commonhours/web\"",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate -w @commonhours/api",
+    "db:seed": "npm run db:seed -w @commonhours/api",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "test": "npm run test -w @commonhours/api",
+    "typecheck": "npm run typecheck -w @commonhours/shared && npm run typecheck -w @commonhours/api && npm run typecheck -w @commonhours/web",
+    "build": "npm run build -w @commonhours/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

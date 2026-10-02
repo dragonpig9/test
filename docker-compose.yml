@@ -1,0 +1,20 @@
+# Local PostgreSQL for CommonHours. `npm run db:up` starts it.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: commonhours
+      POSTGRES_PASSWORD: commonhours
+      POSTGRES_DB: commonhours
+    ports:
+      - "5432:5432"
+    volumes:
+      - commonhours-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commonhours"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  commonhours-db:
