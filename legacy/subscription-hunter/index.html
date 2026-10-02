@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subscription Hunter</title>
+<style>
+  :root { --bg:#eef2f5; --ink:#14213d; --muted:#5b6778; --line:#d5dde5; --card:#fff; --accent:#0f8b8d; --warn:#c8553d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.5; }
+  main { max-width:860px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:2rem; margin:0 0 4px; letter-spacing:-.02em; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .bar { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:24px; }
+  button, .file { background:var(--ink); color:#fff; border:0; border-radius:6px; padding:9px 14px; font:inherit; cursor:pointer; }
+  .file { background:transparent; color:var(--ink); border:1px solid var(--ink); }
+  .file input { display:none; }
+  button:focus-visible, .file:focus-within { outline:3px solid var(--accent); outline-offset:2px; }
+  .total { background:var(--ink); color:#fff; border-radius:10px; padding:20px 24px; margin-bottom:20px; }
+  .total strong { font-size:2.2rem; font-variant-numeric:tabular-nums; }
+  .total .save { color:#7fe0d4; margin-top:4px; min-height:1.5em; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:10px; overflow:hidden; }
+  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); }
+  th { font-weight:600; color:var(--muted); font-size:.9rem; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr:last-child td { border-bottom:0; }
+  .tag { color:var(--warn); font-size:.85rem; font-weight:600; }
+  .wrap { overflow-x:auto; }
+  .empty { padding:24px; background:var(--card); border-radius:10px; }
+  footer { color:var(--muted); font-size:.85rem; margin-top:20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Subscription Hunter</h1>
+  <p class="sub">Finds recurring charges hiding in your transactions. Tick the ones you'd cancel.</p>
+
+  <div class="bar">
+    <button id="demo">Load sample data</button>
+    <label class="file">Upload CSV <input id="csv" type="file" accept=".csv"></label>
+    <span class="sub" style="margin:0">CSV columns: date,merchant,amount</span>
+  </div>
+
+  <div id="out"><div class="empty">Load the sample data to see the demo.</div></div>
+  <footer>Demo project. Sample data is fake. No data leaves your browser.</footer>
+</main>
+
+<script>
+// ---------- Fake data for the demo ----------
+function makeSampleData() {
+  const subs = [
+    { m: "Netflix", a: 13.99, d: 3, up: { from: 3, a: 15.49 } },   // price rise!
+    { m: "Spotify", a: 10.99, d: 8 },
+    { m: "FitnessPark Gym", a: 29.90, d: 12 },
+    { m: "Adobe Creative Cloud", a: 24.19, d: 15 },
+    { m: "Headspace", a: 12.99, d: 20 },
+    { m: "iCloud Storage", a: 2.99, d: 25 },
+  ];
+  const tx = [];
+  for (let i = 0; i < 6; i++) {            // April to September 2026
+    const month = 3 + i;
+    subs.forEach(s => {
+      const amt = s.up && i >= s.up.from ? s.up.a : s.a;
+      tx.push({ date: new Date(2026, month, s.d), merchant: s.m, amount: amt });
+    });
+    // Everyday spending with varying amounts (should NOT be flagged)
+    [4, 11, 18, 26].forEach((d, k) =>
+      tx.push({ date: new Date(2026, month, d), merchant: "Albert Heijn", amount: 18 + ((i * 7 + k * 13) % 41) }));
+    tx.push({ date: new Date(2026, month, 14 + (i % 3)), merchant: "Uber Eats", amount: 14 + ((i * 5) % 17) });
+  }
+  return tx;
+}
+
+// ---------- Core logic: find recurring payments ----------
+function median(a) { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
+
+function frequencyOf(days) {
+  if (days >= 6 && days <= 8)    return { label: "Weekly",  perMonth: 52 / 12, perYear: 52 };
+  if (days >= 26 && days <= 35)  return { label: "Monthly", perMonth: 1,       perYear: 12 };
+  if (days >= 355 && days <= 375) return { label: "Yearly",  perMonth: 1 / 12,  perYear: 1 };
+  return null;
+}
+
+function findSubscriptions(tx) {
+  const groups = {};
+  tx.forEach(t => (groups[t.merchant.trim().toLowerCase()] ||= []).push(t));
+  const found = [];
+  Object.values(groups).forEach(list => {
+    if (list.length < 3) return;
+    list.sort((a, b) => a.date - b.date);
+    const gaps = list.slice(1).map((t, i) => (t.date - list[i].date) / 86400000);
+    const freq = frequencyOf(median(gaps));
+    if (!freq) return;
+    const amts = list.map(t => t.amount);
+    const spread = (Math.max(...amts) - Math.min(...amts)) / median(amts);
+    if (spread > 0.25) return;               // amounts too different: probably normal shopping
+    const last = list[list.length - 1], first = list[0];
+    found.push({
+      merchant: list[0].merchant, freq: freq.label, amount: last.amount,
+      perMonth: last.amount * freq.perMonth, perYear: last.amount * freq.perYear,
+      lastDate: last.date, priceRise: last.amount > first.amount + 0.01 ? { from: first.amount, to: last.amount } : null,
+    });
+  });
+  return found.sort((a, b) => b.perMonth - a.perMonth);
+}
+
+// ---------- CSV import ----------
+function parseCSV(text) {
+  return text.trim().split(/\r?\n/).slice(1).map(line => {
+    const [date, merchant, amount] = line.split(",");
+    return { date: new Date(date), merchant: (merchant || "").trim(), amount: Math.abs(parseFloat(amount)) };
+  }).filter(t => t.merchant && !isNaN(t.date) && !isNaN(t.amount));
+}
+
+// ---------- UI ----------
+const eur = n => "€" + n.toFixed(2);
+const out = document.getElementById("out");
+
+function render(subs) {
+  out.textContent = "";
+  if (!subs.length) { out.innerHTML = '<div class="empty">No recurring payments found. Each needs at least 3 charges.</div>'; return; }
+
+  const total = document.createElement("div");
+  total.className = "total";
+  total.innerHTML = '<div>You pay about <strong id="tot"></strong> a month across ' + subs.length + ' subscriptions</div><div class="save" id="save"></div>';
+  out.appendChild(total);
+
+  const wrap = document.createElement("div"); wrap.className = "wrap";
+  const table = document.createElement("table");
+  table.innerHTML = "<thead><tr><th>Cancel?</th><th>Merchant</th><th>How often</th><th class='num'>Per charge</th><th class='num'>Per year</th></tr></thead>";
+  const body = document.createElement("tbody");
+  subs.forEach(s => {
+    const tr = document.createElement("tr");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.setAttribute("aria-label", "Cancel " + s.merchant);
+    cb.onchange = update; s.cb = cb;
+    const c1 = document.createElement("td"); c1.appendChild(cb);
+    const c2 = document.createElement("td"); c2.textContent = s.merchant;
+    if (s.priceRise) { const t = document.createElement("div"); t.className = "tag"; t.textContent = "Price rose " + eur(s.priceRise.from) + " to " + eur(s.priceRise.to); c2.appendChild(t); }
+    const c3 = document.createElement("td"); c3.textContent = s.freq;
+    const c4 = document.createElement("td"); c4.className = "num"; c4.textContent = eur(s.amount);
+    const c5 = document.createElement("td"); c5.className = "num"; c5.textContent = eur(s.perYear);
+    tr.append(c1, c2, c3, c4, c5); body.appendChild(tr);
+  });
+  table.appendChild(body); wrap.appendChild(table); out.appendChild(wrap);
+
+  function update() {
+    document.getElementById("tot").textContent = eur(subs.reduce((n, s) => n + s.perMonth, 0));
+    const saved = subs.filter(s => s.cb.checked).reduce((n, s) => n + s.perYear, 0);
+    document.getElementById("save").textContent = saved ? "Cancelling these saves " + eur(saved) + " a year" : "";
+  }
+  update();
+}
+
+document.getElementById("demo").onclick = () => render(findSubscriptions(makeSampleData()));
+document.getElementById("csv").onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader(); r.onload = () => render(findSubscriptions(parseCSV(r.result))); r.readAsText(f);
+};
+</script>
+</body>
+</html>

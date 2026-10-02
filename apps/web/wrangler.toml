@@ -1,0 +1,9 @@
+# Cloudflare Pages project for the CommonHours web app.
+# Deploy: npm run deploy -w @commonhours/web   (after `npx wrangler login` or with CLOUDFLARE_API_TOKEN set)
+name = "commonhours"
+pages_build_output_dir = "./dist"
+compatibility_date = "2025-09-01"
+
+[vars]
+# Replace with your API's public URL (Render service URL). Can also be set in the Pages dashboard.
+API_ORIGIN = "https://commonhours-api.onrender.com"

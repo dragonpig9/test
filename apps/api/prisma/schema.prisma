@@ -1,0 +1,540 @@
+// CommonHours data model.
+// Money-like values (credits) are Int in hundredths of a credit (1 credit = 100).
+// Timestamps that describe business events use the (possibly simulated) domain clock,
+// so the demo clock can be advanced reproducibly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── members & auth ─────────────────────────
+
+enum MemberStatus {
+  ACTIVE
+  LEFT
+}
+
+model Member {
+  id           String       @id @default(cuid())
+  handle       String       @unique
+  displayName  String
+  email        String       @unique
+  passwordHash String
+  bio          String       @default("")
+  skills       String[]
+  location     String       @default("")
+  status       MemberStatus @default(ACTIVE)
+  /// The bootstrap member founded the community without a voucher (documented in README).
+  isBootstrap  Boolean      @default(false)
+  joinedAt     DateTime
+  leftAt       DateTime?
+  leaveReason  String?
+  createdAt    DateTime     @default(now())
+
+  invitationsSent     Invitation[]       @relation("InvitationInviter")
+  invitationAccepted  Invitation?        @relation("InvitationAcceptedBy")
+  vouchesGiven        Vouch[]            @relation("Voucher")
+  vouchesReceived     Vouch[]            @relation("Vouchee")
+  amendmentsProposed  VouchAmendment[]
+  listings            Listing[]
+  exchangesProviding  Exchange[]         @relation("ExchangeProvider")
+  exchangesReceiving  Exchange[]         @relation("ExchangeRecipient")
+  exchangesProposed   Exchange[]         @relation("ExchangeProposer")
+  ledgerAccount       LedgerAccount?
+  creditLots          CreditLot[]
+  disputesOpened      Dispute[]
+  evidence            Evidence[]
+  assignments         AttestorAssignment[]
+  conflictsDeclared   ConflictDeclaration[] @relation("ConflictDeclarer")
+  conflictsAgainst    ConflictDeclaration[] @relation("ConflictOther")
+  penalties           CredibilityPenalty[]
+  credibilitySnapshots CredibilitySnapshot[]
+  auditEvents         AuditEvent[]
+}
+
+// ───────────────────────── invitations & vouches ─────────────────────────
+
+enum InvitationStatus {
+  OPEN
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model Invitation {
+  id           String           @id @default(cuid())
+  code         String           @unique
+  inviterId    String
+  inviter      Member           @relation("InvitationInviter", fields: [inviterId], references: [id])
+  inviteeName  String
+  /// Proposed vouch strength and liability the inviter consented to when issuing the invite.
+  strength     Float
+  liabilityPct Int
+  termsVersion String
+  status       InvitationStatus @default(OPEN)
+  createdAt    DateTime
+  expiresAt    DateTime
+  acceptedById String?          @unique
+  acceptedBy   Member?          @relation("InvitationAcceptedBy", fields: [acceptedById], references: [id])
+  acceptedAt   DateTime?
+  vouch        Vouch?
+}
+
+enum VouchStatus {
+  PENDING
+  ACTIVE
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
+enum VouchOrigin {
+  INVITATION
+  DIRECT
+}
+
+/// Directed edge voucher -> vouchee.
+model Vouch {
+  id                String      @id @default(cuid())
+  voucherId         String
+  voucher           Member      @relation("Voucher", fields: [voucherId], references: [id])
+  voucheeId         String
+  vouchee           Member      @relation("Vouchee", fields: [voucheeId], references: [id])
+  strength          Float
+  liabilityPct      Int
+  status            VouchStatus
+  origin            VouchOrigin
+  invitationId      String?     @unique
+  invitation        Invitation? @relation(fields: [invitationId], references: [id])
+  termsVersion      String
+  createdAt         DateTime
+  voucherConsentAt  DateTime
+  voucheeConsentAt  DateTime?
+  activatedAt       DateTime?
+  lastInteractionAt DateTime?
+  expiresAt         DateTime?
+  endedAt           DateTime?
+  endReason         String?
+  amendments        VouchAmendment[]
+  penalties         CredibilityPenalty[]
+
+  @@index([voucherId])
+  @@index([voucheeId])
+}
+
+enum AmendmentStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+/// A proposed change to strength/liability. Requires the counterparty's fresh consent.
+model VouchAmendment {
+  id               String          @id @default(cuid())
+  vouchId          String
+  vouch            Vouch           @relation(fields: [vouchId], references: [id])
+  proposedById     String
+  proposedBy       Member          @relation(fields: [proposedById], references: [id])
+  fromStrength     Float
+  toStrength       Float
+  fromLiabilityPct Int
+  toLiabilityPct   Int
+  status           AmendmentStatus @default(PENDING)
+  createdAt        DateTime
+  decidedAt        DateTime?
+}
+
+// ───────────────────────── listings & exchanges ─────────────────────────
+
+enum ListingType {
+  OFFER
+  REQUEST
+}
+
+enum ListingStatus {
+  OPEN
+  WITHDRAWN
+  CLOSED
+}
+
+enum LocationType {
+  ONLINE
+  IN_PERSON
+}
+
+model Listing {
+  id              String        @id @default(cuid())
+  type            ListingType
+  title           String
+  description     String
+  category        String
+  ownerId         String
+  owner           Member        @relation(fields: [ownerId], references: [id])
+  durationMinutes Int
+  locationType    LocationType
+  location        String        @default("")
+  availability    String
+  requiredSkills  String[]
+  status          ListingStatus @default(OPEN)
+  createdAt       DateTime
+  updatedAt       DateTime
+  withdrawnAt     DateTime?
+  exchanges       Exchange[]
+
+  @@index([status, category])
+}
+
+enum ExchangeStatus {
+  PROPOSED
+  ACCEPTED
+  DISPUTED
+  SETTLED
+  RELEASED
+  CANCELLED
+  DECLINED
+  WITHDRAWN
+}
+
+/// Agreed work between a provider and a recipient. Separate from the listing it came from.
+model Exchange {
+  id                      String         @id @default(cuid())
+  listingId               String?
+  listing                 Listing?       @relation(fields: [listingId], references: [id])
+  linkedExchangeId        String?
+  providerId              String
+  provider                Member         @relation("ExchangeProvider", fields: [providerId], references: [id])
+  recipientId             String
+  recipient               Member         @relation("ExchangeRecipient", fields: [recipientId], references: [id])
+  proposerId              String
+  proposer                Member         @relation("ExchangeProposer", fields: [proposerId], references: [id])
+  deliverable             String
+  category                String
+  durationMinutes         Int
+  scheduledAt             DateTime
+  location                String         @default("")
+  punctualityRequired     Boolean
+  /// Standard amount derived from duration (1h = 1 credit), in hundredths.
+  creditAmount            Int
+  /// Voluntary gift from the recipient, recorded and agreed before work starts.
+  giftBonus               Int            @default(0)
+  cancellationNoticeHours Int
+  cancellationTerms       String         @default("")
+  confirmationDeadline    DateTime
+  status                  ExchangeStatus
+  termsVersion            Int            @default(1)
+  providerAcceptedAt      DateTime?
+  recipientAcceptedAt     DateTime?
+  acceptedAt              DateTime?
+  providerConfirmedAt     DateTime?
+  recipientConfirmedAt    DateTime?
+  settledAt               DateTime?
+  settledAmount           Int?
+  closedAt                DateTime?
+  cancelRequestedById     String?
+  cancelRequestedAt       DateTime?
+  cancelReason            String?
+  partialAmount           Int?
+  partialProposedById     String?
+  partialNote             String?
+  /// Direct vouches that were active for each party when the exchange was accepted.
+  /// Liability penalties use this snapshot so a later revocation cannot erase accountability.
+  liabilitySnapshot       Json?
+  createdAt               DateTime
+  updatedAt               DateTime
+  reservation             Reservation?
+  dispute                 Dispute?
+
+  @@index([providerId])
+  @@index([recipientId])
+  @@index([status])
+}
+
+// ───────────────────────── ledger ─────────────────────────
+
+enum LedgerAccountType {
+  MEMBER
+  SYSTEM_EXPIRY
+  SYSTEM_ADJUSTMENT
+}
+
+model LedgerAccount {
+  id        String            @id @default(cuid())
+  type      LedgerAccountType
+  memberId  String?           @unique
+  member    Member?           @relation(fields: [memberId], references: [id])
+  name      String
+  createdAt DateTime          @default(now())
+  entries   LedgerEntry[]
+}
+
+enum LedgerTxKind {
+  SETTLEMENT
+  EXPIRY
+  ADJUSTMENT
+}
+
+/// A balanced group of entries (sum of amounts = 0).
+model LedgerTransaction {
+  id             String        @id @default(cuid())
+  kind           LedgerTxKind
+  /// Prevents double posting, e.g. "settle:<exchangeId>".
+  idempotencyKey String        @unique
+  exchangeId     String?
+  explanation    String
+  ruleId         String
+  policyVersion  String
+  correlationId  String
+  effectiveAt    DateTime
+  createdAt      DateTime      @default(now())
+  entries        LedgerEntry[]
+  lots           CreditLot[]
+}
+
+model LedgerEntry {
+  id            String            @id @default(cuid())
+  transactionId String
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id])
+  accountId     String
+  account       LedgerAccount     @relation(fields: [accountId], references: [id])
+  amount        Int
+  explanation   String
+  effectiveAt   DateTime
+
+  @@index([accountId])
+}
+
+enum ReservationStatus {
+  ACTIVE
+  FROZEN
+  SETTLED
+  RELEASED
+}
+
+/// Reduces the payer's available balance without paying the provider.
+model Reservation {
+  id             String            @id @default(cuid())
+  exchangeId     String            @unique
+  exchange       Exchange          @relation(fields: [exchangeId], references: [id])
+  payerId        String
+  payeeId        String
+  amount         Int
+  giftBonus      Int               @default(0)
+  status         ReservationStatus
+  createdAt      DateTime
+  updatedAt      DateTime
+  resolvedAt     DateTime?
+  resolutionNote String?
+
+  @@index([payerId, status])
+  @@index([payeeId, status])
+}
+
+/// Dated positive credits. Invariant: sum(remaining) == max(posted balance, 0).
+model CreditLot {
+  id                  String            @id @default(cuid())
+  memberId            String
+  member              Member            @relation(fields: [memberId], references: [id])
+  sourceTransactionId String
+  sourceTransaction   LedgerTransaction @relation(fields: [sourceTransactionId], references: [id])
+  earnedAt            DateTime
+  expiresAt           DateTime
+  originalAmount      Int
+  remaining           Int
+
+  @@index([memberId, earnedAt])
+}
+
+// ───────────────────────── disputes & attestation ─────────────────────────
+
+enum DisputeStatus {
+  AWAITING_ATTESTATION
+  PANEL_REVIEW
+  NEEDS_REVIEW
+  RESOLVED
+}
+
+enum DisputeOutcome {
+  CONFIRMED
+  REFUTED
+}
+
+enum DisputeCondition {
+  DELIVERABLE
+  DURATION
+  PUNCTUALITY
+  NO_SHOW
+}
+
+model Dispute {
+  id                    String          @id @default(cuid())
+  exchangeId            String          @unique
+  exchange              Exchange        @relation(fields: [exchangeId], references: [id])
+  openedById            String
+  openedBy              Member          @relation(fields: [openedById], references: [id])
+  condition             DisputeCondition
+  claim                 String
+  status                DisputeStatus
+  /// 1 = single attestor, 2 = panel of three.
+  stage                 Int             @default(1)
+  outcome               DisputeOutcome?
+  outcomeSource         String?
+  reviewReason          String?
+  nextAction            String?
+  voteDeadline          DateTime?
+  mutualProposalById    String?
+  mutualProposalOutcome DisputeOutcome?
+  createdAt             DateTime
+  resolvedAt            DateTime?
+  evidence              Evidence[]
+  selections            AttestorSelection[]
+  assignments           AttestorAssignment[]
+  penalties             CredibilityPenalty[]
+}
+
+model Evidence {
+  id        String   @id @default(cuid())
+  disputeId String
+  dispute   Dispute  @relation(fields: [disputeId], references: [id])
+  authorId  String
+  author    Member   @relation(fields: [authorId], references: [id])
+  kind      String
+  content   String
+  createdAt DateTime
+}
+
+/// Record of every random selection: seed, candidates, exclusions and result.
+model AttestorSelection {
+  id            String   @id @default(cuid())
+  disputeId     String
+  dispute       Dispute  @relation(fields: [disputeId], references: [id])
+  round         Int
+  stage         Int
+  seed          String
+  candidates    Json
+  selectedIds   String[]
+  requiredCount Int
+  sufficient    Boolean
+  createdAt     DateTime
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  VOTED
+  RECUSED
+  MISSED
+  NOT_NEEDED
+}
+
+enum VoteChoice {
+  CONFIRMED
+  REFUTED
+  UNCLEAR
+}
+
+model AttestorAssignment {
+  id         String           @id @default(cuid())
+  disputeId  String
+  dispute    Dispute          @relation(fields: [disputeId], references: [id])
+  round      Int
+  stage      Int
+  attestorId String
+  attestor   Member           @relation(fields: [attestorId], references: [id])
+  status     AssignmentStatus @default(ASSIGNED)
+  vote       VoteChoice?
+  reason     String?
+  votedAt    DateTime?
+  createdAt  DateTime
+
+  @@unique([disputeId, attestorId])
+}
+
+model ConflictDeclaration {
+  id            String   @id @default(cuid())
+  memberId      String
+  member        Member   @relation("ConflictDeclarer", fields: [memberId], references: [id])
+  otherMemberId String
+  otherMember   Member   @relation("ConflictOther", fields: [otherMemberId], references: [id])
+  reason        String
+  createdAt     DateTime
+
+  @@unique([memberId, otherMemberId])
+}
+
+// ───────────────────────── credibility ─────────────────────────
+
+enum PenaltyKind {
+  NONPERFORMANCE_FINDING
+  VOUCH_LIABILITY
+  MISCONDUCT_FINDING
+}
+
+/// Only created from a documented, finalized finding.
+model CredibilityPenalty {
+  id        String      @id @default(cuid())
+  memberId  String
+  member    Member      @relation(fields: [memberId], references: [id])
+  kind      PenaltyKind
+  points    Int
+  disputeId String?
+  dispute   Dispute?    @relation(fields: [disputeId], references: [id])
+  vouchId   String?
+  vouch     Vouch?      @relation(fields: [vouchId], references: [id])
+  finding   String
+  ruleId    String
+  createdAt DateTime
+}
+
+/// History of computed scores. The score itself is always recomputed from records.
+model CredibilitySnapshot {
+  id        String   @id @default(cuid())
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id])
+  score     Float
+  breakdown Json
+  reason    String
+  createdAt DateTime
+
+  @@index([memberId, createdAt])
+}
+
+// ───────────────────────── audit & system ─────────────────────────
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  /// Domain (possibly simulated) time of the change.
+  occurredAt    DateTime
+  /// Wall-clock time the row was written.
+  recordedAt    DateTime @default(now())
+  actorId       String?
+  actor         Member?  @relation(fields: [actorId], references: [id])
+  module        String
+  action        String
+  entityType    String
+  entityId      String
+  before        Json?
+  after         Json?
+  reason        String
+  ruleId        String
+  policyVersion String
+  correlationId String
+  summary       String
+  /// Monotonic ordering inside one timestamp.
+  seq           Int      @default(autoincrement())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([occurredAt])
+}
+
+/// Single-row table holding the demo clock.
+model SystemState {
+  id           Int       @id @default(1)
+  simulatedNow DateTime?
+  seededAt     DateTime?
+  updatedAt    DateTime  @updatedAt
+}

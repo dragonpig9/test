@@ -1,0 +1,38 @@
+# Render Blueprint: CommonHours web app + API in one Node service, plus managed PostgreSQL.
+# New → Blueprint → select this repo. The site and the API share one URL (https://<service>.onrender.com).
+databases:
+  - name: commonhours-db
+    plan: free
+    databaseName: commonhours
+    user: commonhours
+
+services:
+  - type: web
+    name: commonhours-api
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm ci --include=dev && npm run build -w @commonhours/web
+    startCommand: npm run start:prod -w @commonhours/api
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: commonhours-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      # The API serves apps/web/dist itself, so no Cloudflare Pages project or CORS setup is needed.
+      - key: SERVE_WEB
+        value: "true"
+      # Public hackathon demo: enables the account switcher, simulated clock and reset button for everyone.
+      - key: DEMO_MODE
+        value: "true"
+      - key: DEBUG_ENDPOINTS
+        value: "false"
