@@ -14,7 +14,7 @@ There is no blockchain, no cryptocurrency, no cash conversion and no AI scoring.
 Requirements: Node.js ≥ 20, npm ≥ 10, and Docker (or any PostgreSQL 14+).
 
 ```bash
-npm install                         # installs all workspaces
+npm install                         # installs all workspaces and generates the Prisma client
 cp .env.example apps/api/.env       # local settings, no real secrets
 npm run db:up                       # starts PostgreSQL 16 in Docker (port 5432)
 npm run db:setup                    # applies migrations + seeds the demo community
@@ -40,7 +40,7 @@ Without Docker: point `DATABASE_URL` in `apps/api/.env` at any PostgreSQL databa
 
 ### Deploying
 
-Web on **Cloudflare Pages** (with an `/api` proxy function), API + PostgreSQL on **Render** via `render.yaml`. Step by step: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+One **Render** Blueprint (`render.yaml`) runs the web app, the API and PostgreSQL under a single URL. Cloudflare Pages for the web app is an optional alternative. Step by step: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Stack
 

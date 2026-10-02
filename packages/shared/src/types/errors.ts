@@ -27,6 +27,7 @@ export type ErrorCode =
   | 'DISPUTE_NOT_OPEN'
   | 'DEMO_DISABLED'
   | 'CONFLICT'
+  | 'RATE_LIMITED'
   | 'INTERNAL_ERROR';
 
 export interface ApiErrorBody {

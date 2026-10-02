@@ -1,5 +1,5 @@
-# Render Blueprint: CommonHours API (Node) + managed PostgreSQL.
-# New → Blueprint → select this repo. Then set WEB_ORIGIN to your Cloudflare Pages URL.
+# Render Blueprint: CommonHours web app + API in one Node service, plus managed PostgreSQL.
+# New → Blueprint → select this repo. The site and the API share one URL (https://<service>.onrender.com).
 databases:
   - name: commonhours-db
     plan: free
@@ -12,7 +12,7 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: npm ci --include=dev && npx prisma generate --schema apps/api/prisma/schema.prisma
+    buildCommand: npm ci --include=dev && npm run build -w @commonhours/web
     startCommand: npm run start:prod -w @commonhours/api
     healthCheckPath: /api/health
     envVars:
@@ -28,8 +28,9 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 12h
-      - key: WEB_ORIGIN
-        value: https://commonhours.pages.dev
+      # The API serves apps/web/dist itself, so no Cloudflare Pages project or CORS setup is needed.
+      - key: SERVE_WEB
+        value: "true"
       # Public hackathon demo: enables the account switcher, simulated clock and reset button for everyone.
       - key: DEMO_MODE
         value: "true"

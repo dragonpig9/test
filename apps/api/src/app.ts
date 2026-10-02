@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { Prisma } from '@prisma/client';
@@ -76,6 +77,13 @@ export function createApp() {
   app.use('/api', authed);
 
   app.use('/api', (req, _res, next) => next(new AppError('NOT_FOUND', `No route for ${req.method} ${req.originalUrl}.`, 'api')));
+
+  // Single-service deploys: serve the built web app (apps/web/dist) and send client-side routes to index.html.
+  const webDist = env.webDist;
+  if (webDist && existsSync(`${webDist}/index.html`)) {
+    app.use(express.static(webDist, { index: false, maxAge: '1h' }));
+    app.get('*', (_req, res) => res.sendFile('index.html', { root: webDist }));
+  }
 
   // Uniform error shape: human message + stable code + module + correlation id.
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {

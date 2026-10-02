@@ -61,9 +61,9 @@ export function TrustNetworkPage() {
             <div className="min-w-0 space-y-4">
               <Card className="!p-3">
                 <div className="mb-3 flex flex-wrap items-end gap-3 px-1">
-                  <label className="text-sm">
-                    <span className="label">From</span>
-                    <select className="input" value={from ?? ''} onChange={(e) => setFrom(e.target.value || undefined)}>
+                  <div className="text-sm">
+                    <label className="label" htmlFor="path-from">From</label>
+                    <select id="path-from" className="input" value={from ?? ''} onChange={(e) => setFrom(e.target.value || undefined)}>
                       <option value="">—</option>
                       {graph.data.nodes.map((n) => (
                         <option key={n.id} value={n.id}>
@@ -71,10 +71,10 @@ export function TrustNetworkPage() {
                         </option>
                       ))}
                     </select>
-                  </label>
-                  <label className="text-sm">
-                    <span className="label">To</span>
-                    <select className="input" value={to ?? ''} onChange={(e) => setTo(e.target.value || undefined)}>
+                  </div>
+                  <div className="text-sm">
+                    <label className="label" htmlFor="path-to">To</label>
+                    <select id="path-to" className="input" value={to ?? ''} onChange={(e) => setTo(e.target.value || undefined)}>
                       <option value="">—</option>
                       {graph.data.nodes.map((n) => (
                         <option key={n.id} value={n.id}>
@@ -82,7 +82,7 @@ export function TrustNetworkPage() {
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </div>
                   <button type="button" className="mb-0.5 text-sm text-slate-600 underline" onClick={() => { setFrom(undefined); setTo(undefined); }}>
                     Clear
                   </button>

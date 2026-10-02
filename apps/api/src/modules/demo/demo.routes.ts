@@ -44,10 +44,25 @@ demoRouter.post(
   }),
 );
 
+// The public demo lets anyone reset, so one reset runs at a time with a short cooldown after it.
+const RESET_COOLDOWN_MS = 15_000;
+let resetRunning = false;
+let lastResetAt = 0;
+
 demoRouter.post(
   '/reset',
   ah(async (_req, res) => {
-    await resetDemo();
+    const wait = Math.ceil((lastResetAt + RESET_COOLDOWN_MS - Date.now()) / 1000);
+    if (resetRunning || wait > 0) {
+      throw new AppError('RATE_LIMITED', resetRunning ? 'A demo reset is already running. Try again in a few seconds.' : `The demo was just reset. Try again in ${wait}s.`, M);
+    }
+    resetRunning = true;
+    try {
+      await resetDemo();
+    } finally {
+      resetRunning = false;
+      lastResetAt = Date.now();
+    }
     res.json({ ok: true });
   }),
 );
