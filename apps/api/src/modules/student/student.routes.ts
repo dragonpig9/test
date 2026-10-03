@@ -3,6 +3,7 @@ import { studentDetailsSchema, verifyEmailSchema } from '@commonhours/shared';
 import { prisma, withTx } from '../../core/db';
 import { AppError } from '../../core/errors';
 import { actorId, ah, parseBody } from '../../core/http';
+import { syncCircleMembership } from '../circles/circles.membership';
 import { setStudentDetails, studentStatus } from './student.service';
 import { confirmStudentEmailCode, requestStudentEmailCode } from './student.verification';
 
@@ -22,7 +23,13 @@ studentRouter.put(
   ah(async (req, res) => {
     const me = actorId(req, M);
     const input = parseBody(studentDetailsSchema, req.body, M);
-    const r = await withTx((tx) => setStudentDetails(tx, req.ctx, me, input));
+    const r = await withTx(async (tx) => {
+      const out = await setStudentDetails(tx, req.ctx, me, input);
+      // Same affiliation flow for everyone (invited members too): demo mode joins the circle now,
+      // normal mode after genuine verification. A university change switches circles.
+      await syncCircleMembership(tx, req.ctx, me, 'student details saved');
+      return out;
+    });
     res.json({ student: await studentStatus(prisma, me), verificationReset: r.verificationReset });
   }),
 );
@@ -42,7 +49,11 @@ studentRouter.post(
   ah(async (req, res) => {
     const me = actorId(req, M);
     const { code } = parseBody(verifyEmailSchema, req.body, M);
-    const r = await withTx((tx) => confirmStudentEmailCode(tx, req.ctx, me, code));
+    const r = await withTx(async (tx) => {
+      const out = await confirmStudentEmailCode(tx, req.ctx, me, code);
+      if (out.verified) await syncCircleMembership(tx, req.ctx, me, 'university email verified');
+      return out;
+    });
     if (!r.verified) throw new AppError('VERIFICATION_FAILED', `That code is not correct. ${r.attemptsLeft} attempt(s) left.`, M);
     res.json({ student: await studentStatus(prisma, me) });
   }),

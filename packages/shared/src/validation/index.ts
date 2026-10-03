@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LIABILITY_OPTIONS, SERVICE_CATEGORIES, VOUCH_STRENGTHS } from '../constants';
+import { LIABILITY_OPTIONS, SERVICE_CATEGORIES, TOPIC_TAGS, VOUCH_STRENGTHS } from '../constants';
 import { studentDetailsSchema } from './student';
 
 // Request body schemas used by the API (authoritative) and by web forms (early feedback).
@@ -79,7 +79,14 @@ export const createListingSchema = z.object({
   location: z.string().max(120).default(''),
   availability: z.string().min(2).max(200),
   requiredSkills: z.array(z.string().min(1).max(40)).max(10).default([]),
+  /** Topic tags for discovery (optional). */
+  tags: z.array(z.enum(TOPIC_TAGS)).max(TOPIC_TAGS.length).optional(),
   ...requirementFields,
+});
+
+export const circleMessageSchema = z.object({
+  body: z.string().trim().min(1, 'Write a message').max(1000),
+  tags: z.array(z.enum(TOPIC_TAGS)).max(TOPIC_TAGS.length).default([]),
 });
 
 export const exchangeTermsSchema = z.object({
@@ -196,5 +203,6 @@ export type ProposeExchangeInput = z.infer<typeof proposeExchangeSchema>;
 export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
 export type EvidenceInput = z.infer<typeof evidenceSchema>;
 export type VoteInput = z.infer<typeof voteSchema>;
+export type CircleMessageInput = z.infer<typeof circleMessageSchema>;
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
 export type SkillClaimInput = z.infer<typeof skillClaimSchema>;

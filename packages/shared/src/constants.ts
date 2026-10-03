@@ -16,6 +16,13 @@ export const SERVICE_CATEGORIES = [
 ] as const;
 export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
 
+/**
+ * Lightweight topic tags for circle messages, requests and offers. Used for discovery only:
+ * they never change prices, eligibility, trust or credits.
+ */
+export const TOPIC_TAGS = ['Coding', 'Tutoring', 'Language practice', 'Moving and practical help'] as const;
+export type TopicTag = (typeof TOPIC_TAGS)[number];
+
 export const VOUCH_STRENGTHS = [0.4, 0.7, 1.0] as const;
 export const LIABILITY_OPTIONS = [10, 25, 50] as const;
 

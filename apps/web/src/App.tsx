@@ -12,6 +12,7 @@ import { TrustNetworkPage } from './features/trust-graph/TrustNetworkPage';
 import { ServiceBoardPage } from './features/services/ServiceBoardPage';
 import { ExchangesPage } from './features/exchanges/ExchangesPage';
 import { ExchangeDetailPage } from './features/exchanges/ExchangeDetailPage';
+import { CirclesPage } from './features/circles/CirclesPage';
 import { CreditsPage } from './features/credits/CreditsPage';
 import { CredibilityPage } from './features/credibility/CredibilityPage';
 import { DisputesPage } from './features/disputes/DisputesPage';
@@ -46,6 +47,7 @@ export function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
+        <Route path="/circles" element={<CirclesPage />} />
         <Route path="/trust" element={<TrustNetworkPage />} />
         <Route path="/services" element={<ServiceBoardPage />} />
         <Route path="/exchanges" element={<ExchangesPage />} />

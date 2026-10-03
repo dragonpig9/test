@@ -11,6 +11,7 @@ import { PriceBreakdown } from '../pricing/PriceBreakdown';
 import { EligibilityPanel, LockLine, TierBadge } from '../task-eligibility/EligibilityPanel';
 import { useListings, withdrawListing, type ListingFilters } from './api';
 import { NewListingForm } from './NewListingForm';
+import { TagFilter, Tags } from '../circles/TagPicker';
 
 export function ServiceBoardPage() {
   const { me } = useAuth();
@@ -55,6 +56,10 @@ export function ServiceBoardPage() {
             <input type="checkbox" checked={f.mine} onChange={(e) => setF({ ...f, mine: e.target.checked })} />
             My listings
           </label>
+          <div className="w-full">
+            <span className="label">Topic</span>
+            <TagFilter value={f.tag ?? null} onChange={(t) => setF({ ...f, tag: t ?? undefined })} />
+          </div>
           {f.owner && (
             <button type="button" className="pb-2 text-sm text-brand-700 underline" onClick={() => setF({ ...f, owner: undefined })}>
               Clear member filter
@@ -92,6 +97,11 @@ export function ServiceBoardPage() {
                   {l.title}
                 </h2>
                 <p className="mt-1 line-clamp-3 text-sm text-slate-600">{l.description}</p>
+                {l.tags.length > 0 && (
+                  <div className="mt-2">
+                    <Tags tags={l.tags} />
+                  </div>
+                )}
                 <dl className="mt-3 space-y-1 text-xs text-slate-600">
                   <div>
                     <dt className="inline font-medium">Duration: </dt>

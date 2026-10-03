@@ -22,6 +22,11 @@ export function universityByCode(code: string | null | undefined): University | 
   return UNIVERSITIES.find((u) => u.code === code);
 }
 
+/** The shared chat room for a university: "HKU Circle". */
+export function circleNameFor(code: string): string {
+  return `${code} Circle`;
+}
+
 /** "@connect.hku.hk" for HKU. */
 export function emailSuffixFor(code: UniversityCode): string {
   return `@${universityByCode(code)!.domain}`;

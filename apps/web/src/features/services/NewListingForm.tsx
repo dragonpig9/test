@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TagPicker } from '../circles/TagPicker';
 import { SERVICE_CATEGORIES, type CreateListingInput } from '@commonhours/shared';
 import { Button, ErrorBox, Field } from '../../components/ui';
 import { useAction } from '../../lib/mutations';
@@ -67,6 +68,10 @@ export function NewListingForm({ onDone }: { onDone: () => void }) {
         <Field label="Required skills (comma separated)" htmlFor="lsk">
           <input id="lsk" className="input" value={skills} onChange={(e) => setSkills(e.target.value)} />
         </Field>
+        <div className="sm:col-span-2">
+          <span className="label">Topics (help circle members find this)</span>
+          <TagPicker value={f.tags ?? []} onChange={(tags) => setF({ ...f, tags: tags as CreateListingInput['tags'] })} label="Listing topics" />
+        </div>
       </div>
       <RequirementFields value={req} onChange={setReq} mode={f.type === 'REQUEST' ? 'request' : 'offer'} />
       <ErrorBox error={save.error} />

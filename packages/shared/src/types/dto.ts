@@ -159,6 +159,7 @@ export interface ListingView {
   location: string;
   availability: string;
   requiredSkills: string[];
+  tags: string[];
   status: ListingStatus;
   createdAt: string;
   trustTier: TrustTier;

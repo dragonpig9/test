@@ -121,6 +121,8 @@ model Member {
   emailOutbox          EmailOutbox[]
   poolGrants           PoolGrant[]
   negativePeriods      NegativeBalancePeriod[]
+  circleMemberships    CircleMembership[]
+  circleMessages       CircleMessage[]
 }
 
 // ───────────────────────── invitations & vouches ─────────────────────────
@@ -261,6 +263,8 @@ model Listing {
   location             String        @default("")
   availability         String
   requiredSkills       String[]
+  /// Lightweight topic tags for discovery (TOPIC_TAGS in packages/shared). Never affect price or eligibility.
+  tags                 String[]      @default([])
   /// Access level of the task (see POLICY.taskEligibility). Requests set it for their own home.
   trustTier            TrustTier     @default(STANDARD)
   /// Requester-raised minimums (never below the tier/category minimum).
@@ -850,6 +854,52 @@ model NegativeBalancePeriod {
   createdAt          DateTime
 
   @@index([memberId, negativeSince])
+}
+
+// ───────────────────────── university circles ─────────────────────────
+
+/// One shared chat room per university ("HKU Circle"). Created on first use.
+model CircleRoom {
+  id             String             @id @default(cuid())
+  /// University code from packages/shared/src/universities.ts, e.g. "HKU".
+  universityCode String             @unique
+  name           String
+  createdAt      DateTime
+  memberships    CircleMembership[]
+  messages       CircleMessage[]
+}
+
+/// Membership history. Access is always re-checked live (modules/verification); this row records how
+/// and when someone joined or left. At most one open row (leftAt IS NULL) per member — partial unique index.
+/// Joining a circle never creates friendships, vouches, credibility or relationship strength.
+model CircleMembership {
+  id         String     @id @default(cuid())
+  roomId     String
+  room       CircleRoom @relation(fields: [roomId], references: [id])
+  memberId   String
+  member     Member     @relation(fields: [memberId], references: [id])
+  /// VERIFIED_EMAIL (genuine university email) | DEMO_SELF_DECLARED (demo mode, self-declared)
+  via        String
+  joinedAt   DateTime
+  leftAt     DateTime?
+  leftReason String?
+
+  @@index([memberId])
+  @@index([roomId, leftAt])
+}
+
+/// Persisted circle message. Kept when the author later switches university (history is preserved).
+model CircleMessage {
+  id        String     @id @default(cuid())
+  roomId    String
+  room      CircleRoom @relation(fields: [roomId], references: [id])
+  authorId  String
+  author    Member     @relation(fields: [authorId], references: [id])
+  body      String
+  tags      String[]   @default([])
+  createdAt DateTime
+
+  @@index([roomId, createdAt])
 }
 
 // ───────────────────────── audit & system ─────────────────────────

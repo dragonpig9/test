@@ -8,6 +8,7 @@ import { AppError } from './core/errors';
 import { logRequest } from './core/request-log';
 import { activityRouter } from './modules/activity/activity.routes';
 import { auditRouter } from './modules/audit/audit.routes';
+import { circlesRouter } from './modules/circles/circles.routes';
 import { communityPoolRouter } from './modules/community-pool/community-pool.routes';
 import { dailyJobRouter } from './modules/daily-job/daily-job.routes';
 import { studentRouter } from './modules/student/student.routes';
@@ -92,6 +93,7 @@ export function createApp() {
   authed.use('/pricing', pricingRouter);
   authed.use('/eligibility', eligibilityRouter);
   authed.use('/students', studentRouter);
+  authed.use('/circles', circlesRouter);
   authed.use('/activity', activityRouter);
   authed.use('/community-pool', communityPoolRouter);
   authed.use('/daily-job', dailyJobRouter);

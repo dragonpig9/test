@@ -28,6 +28,7 @@ export function toListingView(l: Listing & { owner: Member }): ListingView {
     location: l.location,
     availability: l.availability,
     requiredSkills: l.requiredSkills,
+    tags: l.tags,
     status: l.status,
     createdAt: l.createdAt.toISOString(),
     trustTier: l.trustTier,
@@ -65,7 +66,7 @@ export async function createListing(tx: Tx, ctx: Ctx, ownerId: string, input: Cr
     }
   }
   const l = await tx.listing.create({
-    data: { ...input, ...requirements, ownerId, createdAt: ctx.now, updatedAt: ctx.now },
+    data: { ...input, tags: [...new Set(input.tags ?? [])], ...requirements, ownerId, createdAt: ctx.now, updatedAt: ctx.now },
     include: { owner: true },
   });
   await recordAudit(tx, ctx, {
@@ -125,14 +126,15 @@ export async function discoverListings(
   db: Db,
   viewerId: string,
   now: Date,
-  f: { category?: string; type?: 'OFFER' | 'REQUEST'; reachableOnly?: boolean; mine?: boolean; maxHops?: number; ownerId?: string },
+  f: { category?: string; type?: 'OFFER' | 'REQUEST'; reachableOnly?: boolean; mine?: boolean; maxHops?: number; ownerId?: string; ownerIds?: string[]; tag?: string },
 ): Promise<ListingView[]> {
   const rows = await db.listing.findMany({
     where: {
       status: 'OPEN',
       ...(f.category ? { category: f.category } : {}),
       ...(f.type ? { type: f.type } : {}),
-      ...(f.mine ? { ownerId: viewerId } : f.ownerId ? { ownerId: f.ownerId } : {}),
+      ...(f.mine ? { ownerId: viewerId } : f.ownerId ? { ownerId: f.ownerId } : f.ownerIds ? { ownerId: { in: f.ownerIds } } : {}),
+      ...(f.tag ? { tags: { has: f.tag } } : {}),
       owner: { status: 'ACTIVE' },
     },
     include: { owner: true },

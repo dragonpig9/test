@@ -9,6 +9,7 @@ import { recordAudit } from '../audit/audit.service';
 import { ensureMemberAccount } from '../ledger/ledger.repo';
 import { setStudentDetails } from '../student/student.service';
 import { requestStudentEmailCode } from '../student/student.verification';
+import { syncCircleMembership } from '../circles/circles.membership';
 import { recordDemoAdmission } from '../verification/verification.service';
 
 /**
@@ -72,7 +73,11 @@ export async function afterJoin(ctx: Ctx, memberId: string, isStudent: boolean):
   if (!isStudent) return { demoAdmitted: false, studentVerification: null, notice: null };
   const memberCtx = { ...ctx, actorId: memberId };
   if (isDemoMode()) {
-    await withTx((tx) => recordDemoAdmission(tx, memberCtx, memberId, 'student registration'));
+    await withTx(async (tx) => {
+      await recordDemoAdmission(tx, memberCtx, memberId, 'student registration');
+      // Straight into the selected university's circle (demo, self-declared affiliation).
+      await syncCircleMembership(tx, memberCtx, memberId, 'registration');
+    });
     return { demoAdmitted: true, studentVerification: null, notice: 'Demo mode: university email verification was skipped. Nothing was emailed.' };
   }
   try {

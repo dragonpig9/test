@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { env } from '../src/config/env';
 import { addDays, addMinutes, DAY_MS } from '../src/core/dates';
 import { prisma } from '../src/core/db';
 import { addDayKey, dayKeyOf, zonedTimeUtc } from '../src/core/timezone';
@@ -114,10 +115,23 @@ describe('student registration and university email verification', () => {
     expect(bad.status).toBe(400);
     const r = await request(app).post('/api/auth/join').send({ ...base, email: 'kayan@life.hkbu.edu.hk', student: { university: 'HKBU', studentEmail: 'kayan@life.hkbu.edu.hk', currentStudentDeclaration: true } });
     expect(r.status).toBe(201);
-    expect(r.body.studentVerification).toMatchObject({ sentTo: 'kayan@life.hkbu.edu.hk' });
+    // Demo mode (the test default): no code is sent and nothing is verified; the account is admitted as a demo student.
+    expect(r.body).toMatchObject({ demoAdmitted: true, studentVerification: null });
     const m = await prisma.member.findUniqueOrThrow({ where: { handle: 'kayan' } });
     expect(m).toMatchObject({ accountType: 'STUDENT', university: 'HKBU', studentEmail: 'kayan@life.hkbu.edu.hk', studentEmailVerifiedAt: null });
     expect(m.studentDeclaredAt).not.toBeNull();
+    expect(await prisma.emailOutbox.count({ where: { memberId: m.id } })).toBe(0);
+
+    // Normal mode: the university email code is sent right after joining.
+    env.demoMode = false;
+    try {
+      const inv2 = await prisma.invitation.create({ data: { code: 'STUDENT2', inviterId: ids.alice, inviteeName: 'Wing', strength: 0.7, liabilityPct: 25, termsVersion: 'test', createdAt: T0, expiresAt: addDays(T0, 14) } });
+      const r2 = await request(app).post('/api/auth/join').send({ ...base, code: inv2.code, handle: 'wing', email: 'wing@life.hkbu.edu.hk', student: { university: 'HKBU', studentEmail: 'wing@life.hkbu.edu.hk', currentStudentDeclaration: true } });
+      expect(r2.status).toBe(201);
+      expect(r2.body.studentVerification).toMatchObject({ sentTo: 'wing@life.hkbu.edu.hk' });
+    } finally {
+      env.demoMode = true;
+    }
   });
 });
 

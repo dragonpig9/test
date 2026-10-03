@@ -8,10 +8,11 @@ export interface ListingFilters {
   reachableOnly: boolean;
   mine: boolean;
   owner?: string;
+  tag?: string;
 }
 
 export const useListings = (f: ListingFilters) => {
-  const q = new URLSearchParams({ category: f.category, type: f.type, reachableOnly: String(f.reachableOnly), mine: String(f.mine), ...(f.owner ? { owner: f.owner } : {}) });
+  const q = new URLSearchParams({ category: f.category, type: f.type, reachableOnly: String(f.reachableOnly), mine: String(f.mine), ...(f.owner ? { owner: f.owner } : {}), ...(f.tag ? { tag: f.tag } : {}) });
   return useQuery({ queryKey: ['listings', f], queryFn: () => api<{ listings: ListingView[]; categories: string[] }>(`/listings?${q}`) });
 };
 export const createListing = (b: CreateListingInput) => api<{ listing: ListingView }>('/listings', { body: b });

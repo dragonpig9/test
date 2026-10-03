@@ -32,6 +32,42 @@ export interface AdmissionView {
   demoBadge: 'Demo student' | 'Demo member' | null;
 }
 
+export interface CircleSummaryView {
+  code: string;
+  name: string;
+  universityName: string;
+  memberCount: number;
+}
+
+export interface MyCircleView {
+  /** The member's university circle (null = no university on the profile). */
+  circle: CircleSummaryView | null;
+  allowed: boolean;
+  via: 'VERIFIED_EMAIL' | 'DEMO_SELF_DECLARED' | null;
+  reason: string;
+  /** Rooms this member previously belonged to (history kept; no access). */
+  formerCircles: { code: string; name: string; leftAt: string; leftReason: string | null }[];
+  tags: string[];
+}
+
+export interface CircleMessageView {
+  id: string;
+  author: MemberSummary;
+  body: string;
+  tags: string[];
+  createdAt: string;
+  mine: boolean;
+}
+
+export interface CircleRoomView {
+  circle: CircleSummaryView;
+  via: 'VERIFIED_EMAIL' | 'DEMO_SELF_DECLARED';
+  messages: CircleMessageView[];
+  tag: string | null;
+  tags: string[];
+  note: string;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   member: MemberSummary;
