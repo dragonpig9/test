@@ -167,3 +167,38 @@ Shared state transitions use `API/core/state-machine.ts` (`assertTransition` →
 - **Endpoints:** `GET /api/notifications`, `GET /api/notifications/unread-count`, `POST /api/notifications/{:id/read|read-all}`, `GET/PUT /api/notifications/preferences`, `GET /api/notifications/outbox`
 - **Rules:** written only after the business transaction commits; failures are logged and never undo it; email only for opted-in members with a verified address; dispute/jury emails are title-only; no addresses in any notification; PREVIEW in demo without credentials, SKIPPED otherwise; retries 1 m / 5 m / 30 m / 2 h, FAILED after 5.
 - **Test:** `test/profiles.notifications.test.ts`.
+
+## 19. Student registration & university email
+- **Purpose:** “Register as a student” with university buttons, fixed email suffix, code verification and a separate enrolment declaration.
+- **Config:** `packages/shared/src/universities.ts` — the ONLY university ↔ domain mapping (web + API); `packages/shared/src/validation/student.ts` (zod)
+- **Frontend:** `WEB/features/student/{UniversityPicker,StudentEmailField,StudentDetailsFields,StudentStatusCard,api}.tsx`; used by `auth/JoinPage.tsx` and `profiles/ProfilePage.tsx`; badge in `profiles/ProfileCard.tsx`
+- **Backend:** `API/modules/student/{student.rules (pure),student.service (details),student.verification (codes),student.routes}.ts`; join hook in `invitations/invitation.service.ts`
+- **Models:** `Member.{accountType,university,studentEmail (unique),studentEmailVerifiedAt,studentEmailVerifiedVia,studentDeclaredAt}`, `EmailVerification.purpose = "student"`
+- **Endpoints:** `GET/PUT /api/students/me`, `POST /api/students/me/verify/{request|confirm}`; `POST /api/auth/join` accepts `student`
+- **Rules:** server re-validates domain (`UNIVERSITY_DOMAIN_MISMATCH`/`VALIDATION_FAILED`); code 30 min, 5 attempts, single use, bound to the address; changing university/email clears verification and kills outstanding codes; `dev-preview` only when `NODE_ENV≠production` and never shown as verified.
+- **Test:** `test/community.integration.test.ts`, `test/community.rules.test.ts`.
+
+## 20. Activity scoring & friends leaderboard
+- **Frontend:** `WEB/features/leaderboard/FriendsLeaderboard.tsx` (Overview)
+- **Backend:** `API/modules/activity/{activity.rules (THE scoring function),activity.repo (qualifying exchanges),activity.service,activity.routes}.ts`; friends from `API/modules/trust/trust.friends.ts`
+- **Endpoints:** `GET /api/activity/leaderboard`
+- **Rules:** SETTLED exchanges (amount > 0, no unresolved dispute) in the last `POLICY.activity.windowDays` HK days; 1 point per (counterparty, day); ≤ `maxPointsPerPairPerWindow` per pair; ranks 1,1,3.
+
+## 21. Community Credit Pool
+- **Frontend:** `WEB/features/community-pool/CommunityPoolCard.tsx` (Overview); pool rewards labelled on Time Credits
+- **Backend:** `API/modules/community-pool/{community-pool.rules (exact integer math, ranking),community-pool.repo,community-pool.service (distributePool, view),community-pool.routes}.ts`; expiry → pool in `API/modules/expiry/expiry.service.ts`
+- **Models:** `LedgerAccountType.SYSTEM_COMMUNITY_POOL`, `LedgerTxKind.POOL_DISTRIBUTION`, `PoolDistribution` (unique runDate, inputs snapshot), `PoolGrant` (unique distribution+member, unique ledger tx)
+- **Endpoints:** `GET /api/community-pool`
+- **Rules:** recipients = ceil(active/2) from all ACTIVE members (not only friends or students); payment = floor(pool/recipients); remainder retained; < 0.01 each or nobody active → retained; ties by `seededShuffle("community-pool:<date>")`; ledger idempotency key `pool:<date>:<member>`.
+
+## 22. Negative-balance tracking & reminders
+- **Backend:** `API/modules/negative-balance/{negative-balance.rules,negative-balance.tracker (called by ledger postTransfer),negative-balance.service (sync + reminders)}.ts`
+- **Models:** `NegativeBalancePeriod` (one open per member, partial unique index)
+- **Rules:** opens when posted balance crosses below 0, closes at ≥ 0; > 50 days → up to 3 friends by relationship strength (conflicts excluded), else private reminder; `reminderSentAt` + dedupe keys = once per period; audit entry names no member.
+- **Script:** `apps/api/scripts/backfill-negative-balance.ts` (the daily job also reconstructs periods from ledger history).
+
+## 23. Daily job orchestration
+- **Backend:** `API/modules/daily-job/{daily-job.schedule (pure),daily-job.service (runDailyJob),daily-job.scheduler (in-process timer),daily-job.routes}.ts`; `server.ts` starts the scheduler; `apps/api/scripts/run-daily-job.ts` for external cron
+- **Models:** `DailyJobRun` (unique runDate; RUNNING/COMPLETED/FAILED; stale RUNNING re-claimed after 15 min)
+- **Endpoints:** `GET /api/daily-job/runs`; demo: `POST /api/demo/clock/advance` runs every crossed 00:00; dev-only `POST /api/demo/clock/next-daily-run`, `POST /api/demo/daily-job/run`
+- **Test:** `test/community.integration.test.ts` (retries, concurrency, demo controls).

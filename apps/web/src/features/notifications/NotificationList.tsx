@@ -5,7 +5,7 @@ import { useAction } from '../../lib/mutations';
 import { fmtDate } from '../../lib/format';
 import { markRead } from './api';
 
-const ICON: Record<string, string> = { invitations: '✉', exchanges: '⇄', reminders: '⏰', credits: '◷', trust: '★', disputes: '⚖', jury: '⚖' };
+const ICON: Record<string, string> = { invitations: '✉', exchanges: '⇄', reminders: '⏰', credits: '◷', trust: '★', disputes: '⚖', jury: '⚖', community: '♥' };
 
 /** Clicking a notification marks it read and opens the linked task, exchange, profile or dispute. */
 export function NotificationList({ items, compact }: { items: NotificationView[]; compact?: boolean }) {

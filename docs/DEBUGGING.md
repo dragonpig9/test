@@ -49,6 +49,12 @@
 | `VERIFICATION_FAILED` | Wrong/expired code, or email delivery disabled outside demo | `profiles/profile.verification.ts` | Send a new code; configure `EMAIL_PROVIDER` |
 | Graph shows a member as disconnected | Their only edges are expired/revoked/pending, or they left | `vouch.rules.ts` `effectiveEdge`, `trust.service.ts` | Inspect the edges in the table view or Debug → Trust edges |
 
+| `UNIVERSITY_DOMAIN_MISMATCH` / student email 400 | Address does not end in the selected university's domain | `packages/shared/src/universities.ts`, `modules/student/student.rules.ts` | Expected; pick the right university |
+| University code “cannot be sent” | Production without `EMAIL_PROVIDER` (no dev preview there) | `modules/student/student.verification.ts` | Configure email |
+| Pool not distributed | No member with activity points, or < 0.01 per recipient (retained), or run already COMPLETED | `community-pool.service.ts`, `PoolDistribution.inputs` | `GET /api/daily-job/runs`; inspect the distribution's `inputs` |
+| Daily job did not run at midnight | Host slept, or `DAILY_JOB_SCHEDULER=false` without cron | `daily-job.scheduler.ts`, `scripts/run-daily-job.ts` | Run the script; FAILED runs show `lastError` and retry safely |
+| No close-friend reminder | ≤ 50 days, already sent this period, balance recovered by the pool payout, or member left | `negative-balance.service.ts` | Query `NegativeBalancePeriod` |
+
 ## Useful commands
 
 ```bash

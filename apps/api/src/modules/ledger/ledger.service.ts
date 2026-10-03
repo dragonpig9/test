@@ -6,10 +6,12 @@ import { addMonths, addDays } from '../../core/dates';
 import { lockRow, type Db, type Tx } from '../../core/db';
 import { AppError, notFound } from '../../core/errors';
 import { recordAudit } from '../audit/audit.service';
+import { onPostedBalanceChange } from '../negative-balance/negative-balance.tracker';
 import { memberAccount, postedBalance, reservationTotals } from './ledger.repo';
 import { floorCheck, newLotAmount, planLotConsumption } from './ledger.rules';
 
 const MODULE = 'ledger';
+const KIND_LABEL: Record<LedgerTxKind, string> = { SETTLEMENT: 'Settlement', EXPIRY: 'Expiry', ADJUSTMENT: 'Adjustment', POOL_DISTRIBUTION: 'Community pool reward' };
 const c = formatCredits;
 
 /**
@@ -227,6 +229,9 @@ export async function postTransfer(
       });
     }
   }
+  // Continuous negative-balance tracking: every posted change of a member balance, incl. pool rewards.
+  if (p.fromMemberId) await onPostedBalanceChange(tx, ctx, p.fromMemberId, fromBefore, fromBefore - p.amount);
+  if (p.toMemberId) await onPostedBalanceChange(tx, ctx, p.toMemberId, toBefore, toBefore + p.amount);
   await recordAudit(tx, ctx, {
     module: MODULE,
     action: `ledger.${p.kind.toLowerCase()}`,
@@ -236,7 +241,7 @@ export async function postTransfer(
     after: { fromBalance: fromBefore - p.amount, toBalance: toBefore + p.amount, amount: p.amount },
     reason: p.explanation,
     ruleId: p.ruleId,
-    summary: `${p.kind === 'SETTLEMENT' ? 'Settlement' : p.kind === 'EXPIRY' ? 'Expiry' : 'Adjustment'}: ${c(p.amount)} credit(s) moved. ${p.explanation}`,
+    summary: `${KIND_LABEL[p.kind]}: ${c(p.amount)} credit(s) moved. ${p.explanation}`,
   });
   return txRow;
 }
@@ -305,7 +310,7 @@ export async function creditSummary(db: Db, memberId: string, now: Date): Promis
       implemented: true,
       nextExpiryAt: live[0]?.expiresAt ?? null,
       expiringWithin30Days: soon,
-      note: `Positive earned credits expire ${POLICY.credits.lotExpiryMonths} months after they were earned (oldest spent first). Debts never expire. Credits backing an open reservation are protected until it resolves. Expiry runs as an explicit sweep (Demo panel or clock advance).`,
+      note: `Positive earned credits expire ${POLICY.credits.lotExpiryMonths} months after they were earned (oldest spent first) and move into the shared Community Credit Pool. Debts never expire. Credits backing an open reservation are protected until it resolves. Expiry runs in the daily job (00:00 Hong Kong time) and on demo clock advances.`,
     },
   };
 }

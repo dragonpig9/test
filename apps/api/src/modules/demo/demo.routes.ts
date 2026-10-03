@@ -6,7 +6,10 @@ import { AppError } from '../../core/errors';
 import { ah, parseBody } from '../../core/http';
 import { signToken } from '../auth/auth.service';
 import { toProfile } from '../members/member.repo';
-import { DEMO_EXTRAS, advanceClock, demoGuide, resetDemo, runSweeps } from './demo.service';
+import { addDays } from '../../core/dates';
+import { nextRunAt } from '../community-pool/community-pool.service';
+import { runDailyJobsBetween, runDueDailyJob } from '../daily-job/daily-job.service';
+import { DEMO_EXTRAS, advanceClock, advanceClockTo, demoGuide, resetDemo, runSweeps } from './demo.service';
 
 export const demoRouter = Router();
 const M = 'demo';
@@ -29,6 +32,8 @@ demoRouter.get(
       members: members.map(toProfile),
       guide: await demoGuide(req.ctx.now),
       extras: DEMO_EXTRAS,
+      devShortcuts: env.devShortcuts,
+      nextDailyRunAt: nextRunAt(req.ctx.now).toISOString(),
     });
   }),
 );
@@ -71,8 +76,38 @@ demoRouter.post(
   '/clock/advance',
   ah(async (req, res) => {
     const { days } = parseBody(advanceClockSchema, req.body, M);
+    // Server behaviour, not a demo shortcut: every 00:00 (Hong Kong) the clock passes runs the daily job
+    // at that moment, in order, before the clock lands on its new time.
+    const dailyJobs = await runDailyJobsBetween(req.ctx.now, addDays(req.ctx.now, days), 'clock-advance');
     const r = await withTx((tx) => advanceClock(tx, req.ctx, days));
-    res.json(r);
+    res.json({ ...r, dailyJobs });
+  }),
+);
+
+// ───── development-only controls (never available when NODE_ENV=production) ─────
+
+const devOnly = () => {
+  if (!env.devShortcuts) throw new AppError('DEMO_DISABLED', 'This control is only available in development.', M);
+};
+
+/** Moves the simulated clock to the next 00:00 Hong Kong time, which runs the daily job there. */
+demoRouter.post(
+  '/clock/next-daily-run',
+  ah(async (req, res) => {
+    devOnly();
+    const after = nextRunAt(req.ctx.now);
+    const dailyJobs = await runDailyJobsBetween(req.ctx.now, after, 'clock-advance');
+    const r = await withTx((tx) => advanceClockTo(tx, req.ctx, after, 'to the next daily run'));
+    res.json({ ...r, dailyJobs });
+  }),
+);
+
+/** Runs (or, if already completed, shows) the daily job for the current Hong Kong date. Idempotent. */
+demoRouter.post(
+  '/daily-job/run',
+  ah(async (req, res) => {
+    devOnly();
+    res.json(await runDueDailyJob(req.ctx.now, 'manual'));
   }),
 );
 

@@ -12,6 +12,7 @@ import { ensureMemberAccount } from '../ledger/ledger.repo';
 import { assertCanCommit, toSummary } from '../members/member.repo';
 import { notify } from '../notifications/notification.events';
 import { maxPenaltyPoints, vouchTermsText } from '../vouches/vouch.rules';
+import { setStudentDetails } from '../student/student.service';
 import { createVouchFromInvitation } from '../vouches/vouch.service';
 
 const MODULE = 'invitations';
@@ -122,6 +123,9 @@ export async function joinWithInvitation(tx: Tx, ctx: Ctx, input: JoinInput, opt
   if (!input.acceptCommunityTerms || !input.acceptVouchTerms) {
     throw new AppError('TERMS_NOT_ACCEPTED', 'You must accept the community terms and the vouch terms to join.', MODULE);
   }
+  if (input.student && input.student.studentEmail.trim().toLowerCase() !== input.email.trim().toLowerCase()) {
+    throw new AppError('VALIDATION_FAILED', 'When you register as a student, your login email is your university email.', MODULE);
+  }
   const inv = await previewInvitation(tx, input.code, ctx.now);
   await lockRow(tx, 'Member', inv.inviterId);
   const clash = await tx.member.findFirst({ where: { OR: [{ email: input.email.toLowerCase() }, { handle: input.handle }] } });
@@ -149,6 +153,8 @@ export async function joinWithInvitation(tx: Tx, ctx: Ctx, input: JoinInput, opt
     summary: `${member.displayName} joined, invited by ${inv.inviter.displayName}`,
   });
   await createVouchFromInvitation(tx, memberCtx, inv, member.id);
+  // "Register as a student": university + domain re-validated server-side; email starts unverified.
+  if (input.student) await setStudentDetails(tx, memberCtx, member.id, input.student);
   notify({
     memberId: inv.inviterId,
     kind: 'invitation.accepted',

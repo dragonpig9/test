@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LIABILITY_OPTIONS, SERVICE_CATEGORIES, VOUCH_STRENGTHS } from '../constants';
+import { studentDetailsSchema } from './student';
 
 // Request body schemas used by the API (authoritative) and by web forms (early feedback).
 
@@ -23,6 +24,8 @@ export const joinSchema = z.object({
   password: z.string().min(8, 'At least 8 characters'),
   acceptCommunityTerms: z.literal(true, { errorMap: () => ({ message: 'You must accept the community terms' }) }),
   acceptVouchTerms: z.literal(true, { errorMap: () => ({ message: 'You must accept the vouch terms' }) }),
+  /** "Register as a student": the university email becomes the login email and must be verified. */
+  student: studentDetailsSchema.optional(),
 });
 
 export const createInvitationSchema = z.object({
@@ -158,7 +161,7 @@ export const profileUpdateSchema = z.object({
 
 export const verifyEmailSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code') });
 
-export const NOTIFICATION_CATEGORIES = ['invitations', 'exchanges', 'reminders', 'credits', 'trust', 'disputes', 'jury'] as const;
+export const NOTIFICATION_CATEGORIES = ['invitations', 'exchanges', 'reminders', 'credits', 'trust', 'disputes', 'jury', 'community'] as const;
 export const notificationPrefsSchema = z.object({
   emailEnabled: z.boolean(),
   categories: z.array(z.enum(NOTIFICATION_CATEGORIES)).max(NOTIFICATION_CATEGORIES.length),
@@ -166,6 +169,8 @@ export const notificationPrefsSchema = z.object({
 
 export const advanceClockSchema = z.object({ days: z.number().int().min(1).max(800) });
 export const switchAccountSchema = z.object({ handle: z.string().min(1) });
+
+export * from './student';
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type JoinInput = z.infer<typeof joinSchema>;

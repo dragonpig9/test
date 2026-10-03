@@ -6,7 +6,9 @@ import { MemberChip } from '../../components/MemberChip';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { credits, fmtDate } from '../../lib/format';
+import { CommunityPoolCard } from '../community-pool/CommunityPoolCard';
 import { DemoGuide } from '../demo/DemoGuide';
+import { FriendsLeaderboard } from '../leaderboard/FriendsLeaderboard';
 import { useNotifications } from '../notifications/api';
 import { NotificationList } from '../notifications/NotificationList';
 
@@ -117,7 +119,9 @@ export function OverviewPage() {
             )}
           </Card>
         </div>
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
+          <FriendsLeaderboard />
+          <CommunityPoolCard />
           {me.demoMode && (
             <Card>
               <DemoGuide inline />

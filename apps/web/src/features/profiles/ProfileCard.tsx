@@ -47,6 +47,14 @@ export function ProfileCard({ p, compact }: { p: ProfileView; compact?: boolean 
           <div className="mt-1 flex flex-wrap gap-1">
             <VerificationPill label="Email" v={p.verification.email} />
             <VerificationPill label="Phone" v={p.verification.phone} />
+            {p.member.university && (
+              <span
+                className={clsx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', p.member.universityEmailVerified ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700')}
+                title="Current enrolment is self-declared; university email ownership is verified separately."
+              >
+                {p.member.university} student{p.member.universityEmailVerified ? ' · ✓ University email verified' : ' · email not verified'}
+              </span>
+            )}
           </div>
         </div>
       </div>

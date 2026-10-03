@@ -19,6 +19,11 @@ enum MemberStatus {
   LEFT
 }
 
+enum AccountType {
+  STANDARD
+  STUDENT
+}
+
 model Member {
   id           String       @id @default(cuid())
   handle       String       @unique
@@ -60,32 +65,48 @@ model Member {
   emailNotifications       Boolean   @default(false)
   emailCategories          String[]  @default([])
 
-  invitationsSent      Invitation[]          @relation("InvitationInviter")
-  invitationAccepted   Invitation?           @relation("InvitationAcceptedBy")
-  vouchesGiven         Vouch[]               @relation("Voucher")
-  vouchesReceived      Vouch[]               @relation("Vouchee")
+  // Student details (see modules/student). The university → domain mapping lives in
+  // packages/shared/src/universities.ts; the API re-validates it on every write.
+  accountType             AccountType @default(STANDARD)
+  /// University code, e.g. "HKU". Public on the profile.
+  university              String?
+  /// Private. Unique so one university mailbox cannot verify several accounts.
+  studentEmail            String?     @unique
+  /// Set only by the student email verification flow; cleared whenever university/email change.
+  studentEmailVerifiedAt  DateTime?
+  /// "email-code" (delivered by a configured provider) or "dev-preview" (development only).
+  studentEmailVerifiedVia String?
+  /// Self-declared current enrolment, separate from email ownership.
+  studentDeclaredAt       DateTime?
+
+  invitationsSent      Invitation[]            @relation("InvitationInviter")
+  invitationAccepted   Invitation?             @relation("InvitationAcceptedBy")
+  vouchesGiven         Vouch[]                 @relation("Voucher")
+  vouchesReceived      Vouch[]                 @relation("Vouchee")
   amendmentsProposed   VouchAmendment[]
   listings             Listing[]
-  exchangesProviding   Exchange[]            @relation("ExchangeProvider")
-  exchangesReceiving   Exchange[]            @relation("ExchangeRecipient")
-  exchangesProposed    Exchange[]            @relation("ExchangeProposer")
+  exchangesProviding   Exchange[]              @relation("ExchangeProvider")
+  exchangesReceiving   Exchange[]              @relation("ExchangeRecipient")
+  exchangesProposed    Exchange[]              @relation("ExchangeProposer")
   ledgerAccount        LedgerAccount?
   creditLots           CreditLot[]
   disputesOpened       Dispute[]
   evidence             Evidence[]
   assignments          AttestorAssignment[]
-  conflictsDeclared    ConflictDeclaration[] @relation("ConflictDeclarer")
-  conflictsAgainst     ConflictDeclaration[] @relation("ConflictOther")
+  conflictsDeclared    ConflictDeclaration[]   @relation("ConflictDeclarer")
+  conflictsAgainst     ConflictDeclaration[]   @relation("ConflictOther")
   penalties            CredibilityPenalty[]
   credibilitySnapshots CredibilitySnapshot[]
   auditEvents          AuditEvent[]
-  earnedAsA            EarnedRelationship[]  @relation("EarnedA")
-  earnedAsB            EarnedRelationship[]  @relation("EarnedB")
+  earnedAsA            EarnedRelationship[]    @relation("EarnedA")
+  earnedAsB            EarnedRelationship[]    @relation("EarnedB")
   skillClaims          SkillClaim[]
   skillReviews         SkillReview[]
   emailVerifications   EmailVerification[]
   notifications        Notification[]
   emailOutbox          EmailOutbox[]
+  poolGrants           PoolGrant[]
+  negativePeriods      NegativeBalancePeriod[]
 }
 
 // ───────────────────────── invitations & vouches ─────────────────────────
@@ -333,8 +354,11 @@ model Exchange {
 
 enum LedgerAccountType {
   MEMBER
+  /// Legacy: expired credits before the community pool existed (kept for history).
   SYSTEM_EXPIRY
   SYSTEM_ADJUSTMENT
+  /// Shared Community Credit Pool: receives expired credits, pays daily redistributions. Never expires.
+  SYSTEM_COMMUNITY_POOL
 }
 
 model LedgerAccount {
@@ -351,6 +375,7 @@ enum LedgerTxKind {
   SETTLEMENT
   EXPIRY
   ADJUSTMENT
+  POOL_DISTRIBUTION
 }
 
 /// A balanced group of entries (sum of amounts = 0).
@@ -664,6 +689,8 @@ model EmailVerification {
   id         String    @id @default(cuid())
   memberId   String
   member     Member    @relation(fields: [memberId], references: [id])
+  /// "contact" (profile contact email) or "student" (university email). Flows never consume each other's codes.
+  purpose    String    @default("contact")
   address    String
   codeHash   String
   expiresAt  DateTime
@@ -727,6 +754,88 @@ model EmailOutbox {
 
   @@index([status, nextAttemptAt])
   @@index([memberId, createdAt])
+}
+
+// ───────────────────────── community pool, daily job, negative balances ─────────────────────────
+
+/// One row per Hong Kong calendar date. The unique runDate makes the daily job run at most once
+/// per date; a FAILED or stale RUNNING row is re-claimed by the next attempt (every step is idempotent).
+model DailyJobRun {
+  id           String    @id @default(cuid())
+  /// YYYY-MM-DD in POLICY.schedule.timezone (the date whose 00:00 triggered the run).
+  runDate      String    @unique
+  /// Domain time of that date's 00:00.
+  scheduledFor DateTime
+  /// RUNNING | COMPLETED | FAILED
+  status       String
+  /// scheduler | clock-advance | manual | cli
+  trigger      String
+  attempts     Int       @default(1)
+  /// Wall-clock times (used to detect a crashed worker).
+  startedAt    DateTime
+  completedAt  DateTime?
+  lastError    String?
+  steps        Json?
+}
+
+/// One distribution per date (unique runDate): the snapshot of every input and the exact arithmetic.
+model PoolDistribution {
+  id                  String      @id @default(cuid())
+  runDate             String      @unique
+  /// PAID | RETAINED_NO_ACTIVE_USERS | RETAINED_TOO_SMALL
+  status              String
+  /// Hundredths of a credit (the ledger's unit).
+  poolBefore          Int
+  activeUserCount     Int
+  recipientCount      Int
+  paymentPerRecipient Int
+  totalPaid           Int
+  remaining           Int
+  seed                String
+  windowStart         String
+  windowEnd           String
+  /// Scores, tie order, selection and formula used.
+  inputs              Json
+  createdAt           DateTime
+  grants              PoolGrant[]
+}
+
+/// One payment to one member in one distribution (unique per distribution + member).
+model PoolGrant {
+  id                  String           @id @default(cuid())
+  distributionId      String
+  distribution        PoolDistribution @relation(fields: [distributionId], references: [id])
+  memberId            String
+  member              Member           @relation(fields: [memberId], references: [id])
+  amount              Int
+  rank                Int
+  points              Int
+  ledgerTransactionId String           @unique
+  createdAt           DateTime
+
+  @@unique([distributionId, memberId])
+  @@index([memberId, createdAt])
+}
+
+/// A continuous period with a negative POSTED balance (reservations never open one).
+/// At most one open period (recoveredAt IS NULL) per member — enforced by a partial unique index.
+model NegativeBalancePeriod {
+  id                 String    @id @default(cuid())
+  memberId           String
+  member             Member    @relation(fields: [memberId], references: [id])
+  /// When the posted balance crossed below zero.
+  negativeSince      DateTime
+  /// When it reached zero or above (period closed).
+  recoveredAt        DateTime?
+  /// Set once the >50-day reminder was sent for this period (never sent twice).
+  reminderSentAt     DateTime?
+  /// Member ids notified (friends), or the member's own id for a private reminder.
+  reminderRecipients String[]  @default([])
+  /// ledger (tracked live) | reconstructed (from ledger history) | migration (no history found)
+  source             String
+  createdAt          DateTime
+
+  @@index([memberId, negativeSince])
 }
 
 // ───────────────────────── audit & system ─────────────────────────

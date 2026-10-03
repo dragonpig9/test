@@ -36,3 +36,22 @@ services:
         value: "true"
       - key: DEBUG_ENDPOINTS
         value: "false"
+      # Daily job (00:00 Hong Kong). The free plan sleeps when idle, so the in-process timer can miss
+      # midnight: use an always-on plan or the cron job below (docs/DEPLOYMENT.md). Each date runs once.
+      - key: DAILY_JOB_SCHEDULER
+        value: "true"
+      # Needed for university email verification in production (no development preview there):
+      # set EMAIL_PROVIDER, EMAIL_FROM and the Gmail/SMTP credentials in the Render dashboard.
+
+  # Optional (paid plan): uncomment to run the daily job from Render Cron at 00:00 Asia/Hong_Kong.
+  # - type: cron
+  #   name: commonhours-daily-job
+  #   runtime: node
+  #   schedule: "0 16 * * *"
+  #   buildCommand: npm ci --include=dev
+  #   startCommand: npx tsx apps/api/scripts/run-daily-job.ts
+  #   envVars:
+  #     - key: DATABASE_URL
+  #       fromDatabase:
+  #         name: commonhours-db
+  #         property: connectionString

@@ -4,7 +4,7 @@ import type { Db } from '../../core/db';
 import { AppError, notFound } from '../../core/errors';
 
 type SummaryInput = Pick<Member, 'id' | 'handle' | 'displayName' | 'status' | 'isBootstrap'> &
-  Partial<Pick<Member, 'photoUrl' | 'affiliation' | 'location' | 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt'>>;
+  Partial<Pick<Member, 'photoUrl' | 'affiliation' | 'location' | 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt' | 'university' | 'studentEmailVerifiedAt' | 'studentEmailVerifiedVia'>>;
 
 /** Contact verification as a label: only "VERIFIED" when a code was really delivered and confirmed. */
 export function contactVerificationOf(m: Partial<Pick<Member, 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt'>>) {
@@ -17,7 +17,16 @@ export function toSummary(m: SummaryInput): MemberSummary {
   const base: MemberSummary = { id: m.id, handle: m.handle, displayName: m.displayName, status: m.status, isBootstrap: m.isBootstrap };
   // Only full member rows carry profile basics; selects that omit them keep the v1 shape.
   if (m.affiliation === undefined) return base;
-  return { ...base, photoUrl: m.photoUrl ?? null, affiliation: m.affiliation, neighborhood: m.location ?? '', contactVerification: contactVerificationOf(m) };
+  return {
+    ...base,
+    photoUrl: m.photoUrl ?? null,
+    affiliation: m.affiliation,
+    neighborhood: m.location ?? '',
+    contactVerification: contactVerificationOf(m),
+    university: m.university ?? null,
+    // Public flag is true only for a real delivered code ("email-code"), never a development preview.
+    universityEmailVerified: !!m.studentEmailVerifiedAt && m.studentEmailVerifiedVia === 'email-code',
+  };
 }
 
 export function toProfile(m: Member): MemberProfile {
