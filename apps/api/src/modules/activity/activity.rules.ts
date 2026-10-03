@@ -1,8 +1,8 @@
 import { addDayKey, dayKeyOf } from '../../core/timezone';
 
 /**
- * THE activity-scoring rule (pure). Used by the friends leaderboard and the community-pool
- * redistribution, so both always agree.
+ * The pool activity-scoring rule (pure). Used by the daily community-pool redistribution.
+ * (The monthly Friends activity view uses modules/friends-activity and never changes the pool.)
  *
  *   For every qualifying exchange settled on local day D between members A and B:
  *     A earns a point for (B, D) and B earns a point for (A, D).

@@ -8,7 +8,7 @@ import { useAuth } from '../../lib/auth';
 import { credits, fmtDate } from '../../lib/format';
 import { CommunityPoolCard } from '../community-pool/CommunityPoolCard';
 import { DemoGuide } from '../demo/DemoGuide';
-import { FriendsLeaderboard } from '../leaderboard/FriendsLeaderboard';
+import { FriendsActivityCard } from '../friends-activity/FriendsActivityCard';
 import { useNotifications } from '../notifications/api';
 import { NotificationList } from '../notifications/NotificationList';
 
@@ -120,7 +120,7 @@ export function OverviewPage() {
           </Card>
         </div>
         <div className="min-w-0 space-y-6">
-          <FriendsLeaderboard />
+          <FriendsActivityCard />
           <CommunityPoolCard />
           {me.demoMode && (
             <Card>

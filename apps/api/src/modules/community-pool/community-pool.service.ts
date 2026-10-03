@@ -141,7 +141,7 @@ export async function communityPoolView(db: Db, memberId: string, now: Date): Pr
     myLastGrant: myGrant ? { runDate: myGrant.distribution.runDate, amount: myGrant.amount } : null,
     rules: [
       `Expired credits (after ${POLICY.credits.lotExpiryMonths} months) move into this pool through recorded ledger entries. The pool itself never expires.`,
-      `Every day at 00:00 Hong Kong time the server expires due credits, then ranks every eligible member by activity points (same rule as the leaderboard, last ${POLICY.activity.windowDays} days).`,
+      `Every day at 00:00 Hong Kong time the server expires due credits, then ranks every eligible member by activity points from the last ${POLICY.activity.windowDays} days (1 point per different person per day; the monthly Friends activity view never changes this).`,
       `The top half of active members (ceil(active ÷ 2)) share the pool equally; each payment is rounded down to 0.01 and every leftover hundredth stays in the pool.`,
       'Equal scores are ordered by a reproducible shuffle seeded with the date. No active members, or less than 0.01 per recipient → the pool is kept for later.',
     ],

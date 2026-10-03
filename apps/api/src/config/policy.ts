@@ -199,7 +199,7 @@ export const POLICY = {
   },
 
   /**
-   * Activity points (one shared scoring function for the friends leaderboard AND the pool):
+   * Pool activity points (the daily Community Credit Pool ranking; the monthly Friends activity view is below):
    *   1 point per distinct counterparty per local calendar day, from SETTLED exchanges in the window.
    * Logins, page views, listings, cancelled/declined/released exchanges, unresolved disputes and pool
    * rewards never score. Activity points are separate from credits, credibility and relationship strength.
@@ -212,6 +212,20 @@ export const POLICY = {
      * members can earn each other at most this many points per scoring window. null = no cap.
      */
     maxPointsPerPairPerWindow: 2 as number | null,
+  },
+
+  /**
+   * Monthly "Friends activity" (display only; separate from the pool's 7-day activity window above).
+   * A qualifying settled service with a positive credit transfer gives each participant one point, capped
+   * per UNORDERED pair: at most maxPointsPerPairPerDay per member per Hong Kong day and
+   * maxPointsPerPairPerMonth per member per calendar month — whoever was provider or recipient.
+   * Credits earned/spent are counted from settled service-credit transfers and are never capped.
+   * Never read by the pool, eligibility or any background job.
+   */
+  friendsActivity: {
+    pointsPerQualifyingExchange: 1,
+    maxPointsPerPairPerDay: 1,
+    maxPointsPerPairPerMonth: 2,
   },
 
   /** Community Credit Pool: receives expired credits; the daily job redistributes it. The pool never expires. */
@@ -283,6 +297,7 @@ export const RULES = {
   CIRCLE_MEMBERSHIP: 'CIRCLES.UNIVERSITY_MEMBERSHIP.v1',
   STUDENT_VERIFY: 'STUDENT.EMAIL_VERIFICATION.v1',
   ACTIVITY_SCORE: 'ACTIVITY.DISTINCT_COUNTERPARTY_DAY.v1',
+  FRIENDS_ACTIVITY: 'ACTIVITY.FRIENDS_MONTHLY_PAIR_CAPS.v1',
   EXPIRY_TO_POOL: 'LEDGER.CREDIT_EXPIRY_TO_POOL.v2',
   POOL_DISTRIBUTE: 'POOL.DAILY_REDISTRIBUTION.v1',
   NEGATIVE_BALANCE: 'CREDITS.NEGATIVE_BALANCE_PERIOD.v1',

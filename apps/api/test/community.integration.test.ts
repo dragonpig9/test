@@ -5,7 +5,8 @@ import { env } from '../src/config/env';
 import { addDays, addMinutes, DAY_MS } from '../src/core/dates';
 import { prisma } from '../src/core/db';
 import { addDayKey, dayKeyOf, zonedTimeUtc } from '../src/core/timezone';
-import { friendsLeaderboard } from '../src/modules/activity/activity.service';
+import { activityScores } from '../src/modules/activity/activity.service';
+import { friendsActivity } from '../src/modules/friends-activity/friends-activity.service';
 import { declareConflict } from '../src/modules/attestation/attestation.service';
 import { signToken } from '../src/modules/auth/auth.service';
 import { runDailyJob } from '../src/modules/daily-job/daily-job.service';
@@ -135,33 +136,6 @@ describe('student registration and university email verification', () => {
   });
 });
 
-describe('friends activity leaderboard', () => {
-  it('shows me and my accepted friends; repeat same-day exchanges add nothing; refreshes after settlement', async () => {
-    await reset();
-    // chain alice → ben → cat → dan → eve; plus a stranger far away.
-    const ids = await community(['alice', 'ben', 'cat', 'dan', 'eve']);
-    const day = addDays(T0, 10);
-    let lb = await friendsLeaderboard(prisma, ids.ben, hkMorning(day));
-    expect(lb.entries.map((e) => e.member.handle).sort()).toEqual(['alice', 'ben', 'cat']);
-    expect(lb.entries.every((e) => e.points === 0)).toBe(true);
-
-    await exchange(ids.ben, ids.cat, 60, hkMorning(day));
-    await exchange(ids.cat, ids.ben, 60, addMinutes(hkMorning(day), 120)); // same pair, same HK day
-    await exchange(ids.ben, ids.dan, 60, addMinutes(hkMorning(day), 180)); // new counterparty (dan becomes an earned friend)
-    lb = await friendsLeaderboard(prisma, ids.ben, addMinutes(hkMorning(day), 240));
-    const pts = Object.fromEntries(lb.entries.map((e) => [e.member.handle, e.points]));
-    expect(pts).toEqual({ ben: 2, cat: 1, dan: 1, alice: 0 });
-    expect(lb.entries[0]).toMatchObject({ rank: 1, isMe: true });
-    expect(lb.entries.filter((e) => e.isMe)).toHaveLength(1);
-    expect(lb.window).toMatchObject({ days: 7, timezone: HK, endDay: dayKeyOf(day, HK) });
-    // Credits, credibility and relationship strength are not activity points.
-    expect(Object.keys(lb.entries[0]).sort()).toEqual(['distinctCounterparties', 'isMe', 'member', 'points', 'rank', 'university']);
-    // Eight days later the window has moved on.
-    lb = await friendsLeaderboard(prisma, ids.ben, hkMorning(day, 8));
-    expect(lb.entries.find((e) => e.isMe)!.points).toBe(0);
-  });
-});
-
 describe('community credit pool and the daily job', () => {
   let ids: Record<string, string>;
   beforeEach(async () => {
@@ -210,9 +184,12 @@ describe('community credit pool and the daily job', () => {
     expect(await prisma.ledgerTransaction.count({ where: { kind: 'POOL_DISTRIBUTION' } })).toBe(2);
     expect(await prisma.ledgerTransaction.count({ where: { kind: 'EXPIRY' } })).toBe(1);
     expect(await prisma.notification.count({ where: { kind: 'pool.reward' } })).toBe(2);
-    // Pool rewards earn no activity points.
-    const lb = await friendsLeaderboard(prisma, ids.cat, hkMorning(day, 1));
-    expect(lb.entries.find((e) => e.isMe)!.points).toBe(2);
+    // Pool rewards earn no activity points (pool window) and are not "credits earned" in Friends activity.
+    const scores = await activityScores(prisma, dayKeyOf(hkMorning(day, 1), HK));
+    expect(scores.scores.get(ids.cat)!.points).toBe(2);
+    const { year, month } = { year: Number(runDate.slice(0, 4)), month: Number(runDate.slice(5, 7)) };
+    const fa = await friendsActivity(prisma, ids.cat, year, month, hkMorning(day, 1));
+    expect(fa.entries.find((e) => e.isMe)).toMatchObject({ points: 2, creditsEarned: 200, creditsSpent: 0 });
 
     // The view shows balance, last distribution and the retained remainder.
     const v = await request(app).get('/api/community-pool').set(auth(ids.cat));

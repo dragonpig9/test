@@ -68,15 +68,6 @@ export interface CircleRoomView {
   note: string;
 }
 
-export interface LeaderboardEntry {
-  rank: number;
-  member: MemberSummary;
-  university: string | null;
-  points: number;
-  distinctCounterparties: number;
-  isMe: boolean;
-}
-
 export interface ActivityWindowView {
   startDay: string;
   endDay: string;
@@ -84,9 +75,33 @@ export interface ActivityWindowView {
   timezone: string;
 }
 
-export interface LeaderboardView {
-  window: ActivityWindowView;
-  entries: LeaderboardEntry[];
+export interface FriendsActivityEntry {
+  /** Equal points → equal rank (1, 1, 3). */
+  rank: number;
+  member: MemberSummary;
+  university: string | null;
+  /** Capped activity points for the month. Separate from credits, credibility and relationship strength. */
+  points: number;
+  /** Hundredths of a credit, from settled service-credit transfers (gifts, pool rewards, expiry and adjustments excluded). */
+  creditsEarned: number;
+  creditsSpent: number;
+  isMe: boolean;
+}
+
+export interface FriendsActivityView {
+  label: 'Friends activity';
+  year: number;
+  /** 1–12 */
+  month: number;
+  monthName: string;
+  timezone: string;
+  /** Inclusive local dates of the month. */
+  startDay: string;
+  endDay: string;
+  isCurrentMonth: boolean;
+  years: number[];
+  entries: FriendsActivityEntry[];
+  /** Short scoring explanation for the tooltip. */
   rules: string[];
   generatedAt: string;
 }
