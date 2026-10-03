@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createListingSchema, SERVICE_CATEGORIES } from '@commonhours/shared';
+import { createListingSchema, SERVICE_CATEGORIES, TOPIC_TAGS } from '@commonhours/shared';
 import { prisma, withTx } from '../../core/db';
 import { AppError } from '../../core/errors';
 import { actorId, ah, parseBody } from '../../core/http';
@@ -19,8 +19,9 @@ listingsRouter.get(
       mine: q.mine === 'true',
       ownerId: typeof q.owner === 'string' && q.owner ? q.owner : undefined,
       maxHops: typeof q.maxHops === 'string' && q.maxHops ? Number(q.maxHops) : undefined,
+      tag: typeof q.tag === 'string' && (TOPIC_TAGS as readonly string[]).includes(q.tag) ? q.tag : undefined,
     });
-    res.json({ listings, categories: SERVICE_CATEGORIES });
+    res.json({ listings, categories: SERVICE_CATEGORIES, tags: TOPIC_TAGS });
   }),
 );
 

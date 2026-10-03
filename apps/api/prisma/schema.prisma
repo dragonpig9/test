@@ -24,6 +24,12 @@ enum AccountType {
   STUDENT
 }
 
+/// How the member joined: with an invitation (vouched by the inviter) or as a student without one.
+enum JoinRoute {
+  INVITATION
+  STUDENT
+}
+
 model Member {
   id           String       @id @default(cuid())
   handle       String       @unique
@@ -79,6 +85,16 @@ model Member {
   /// Self-declared current enrolment, separate from email ownership.
   studentDeclaredAt       DateTime?
 
+  // Admission (see modules/verification). Invited members are admitted by their invitation;
+  // student-route members by genuine university email verification (or the demo-mode bypass).
+  joinRoute           JoinRoute @default(INVITATION)
+  /// Set the first time the account used the DEMO_MODE verification bypass. Recorded separately
+  /// from genuine verification and never read to grant access (demo off = genuine rules again).
+  demoAdmittedAt      DateTime?
+  demoAdmissionReason String?
+  /// Recognition badges are shown on the public profile unless the member hides them.
+  showBadges          Boolean   @default(true)
+
   invitationsSent      Invitation[]            @relation("InvitationInviter")
   invitationAccepted   Invitation?             @relation("InvitationAcceptedBy")
   vouchesGiven         Vouch[]                 @relation("Voucher")
@@ -107,6 +123,9 @@ model Member {
   emailOutbox          EmailOutbox[]
   poolGrants           PoolGrant[]
   negativePeriods      NegativeBalancePeriod[]
+  circleMemberships    CircleMembership[]
+  circleMessages       CircleMessage[]
+  badges               MemberBadge[]
 }
 
 // ───────────────────────── invitations & vouches ─────────────────────────
@@ -247,6 +266,8 @@ model Listing {
   location             String        @default("")
   availability         String
   requiredSkills       String[]
+  /// Lightweight topic tags for discovery (TOPIC_TAGS in packages/shared). Never affect price or eligibility.
+  tags                 String[]      @default([])
   /// Access level of the task (see POLICY.taskEligibility). Requests set it for their own home.
   trustTier            TrustTier     @default(STANDARD)
   /// Requester-raised minimums (never below the tier/category minimum).
@@ -836,6 +857,73 @@ model NegativeBalancePeriod {
   createdAt          DateTime
 
   @@index([memberId, negativeSince])
+}
+
+// ───────────────────────── university circles ─────────────────────────
+
+/// One shared chat room per university ("HKU Circle"). Created on first use.
+model CircleRoom {
+  id             String             @id @default(cuid())
+  /// University code from packages/shared/src/universities.ts, e.g. "HKU".
+  universityCode String             @unique
+  name           String
+  createdAt      DateTime
+  memberships    CircleMembership[]
+  messages       CircleMessage[]
+}
+
+/// Membership history. Access is always re-checked live (modules/verification); this row records how
+/// and when someone joined or left. At most one open row (leftAt IS NULL) per member — partial unique index.
+/// Joining a circle never creates friendships, vouches, credibility or relationship strength.
+model CircleMembership {
+  id         String     @id @default(cuid())
+  roomId     String
+  room       CircleRoom @relation(fields: [roomId], references: [id])
+  memberId   String
+  member     Member     @relation(fields: [memberId], references: [id])
+  /// VERIFIED_EMAIL (genuine university email) | DEMO_SELF_DECLARED (demo mode, self-declared)
+  via        String
+  joinedAt   DateTime
+  leftAt     DateTime?
+  leftReason String?
+
+  @@index([memberId])
+  @@index([roomId, leftAt])
+}
+
+/// Persisted circle message. Kept when the author later switches university (history is preserved).
+model CircleMessage {
+  id        String     @id @default(cuid())
+  roomId    String
+  room      CircleRoom @relation(fields: [roomId], references: [id])
+  authorId  String
+  author    Member     @relation(fields: [authorId], references: [id])
+  body      String
+  tags      String[]   @default([])
+  createdAt DateTime
+
+  @@index([roomId, createdAt])
+}
+
+// ───────────────────────── recognition badges ─────────────────────────
+
+/// Recognition only: badges never create credits, change prices or limits, raise credibility or
+/// relationship strength, unlock tasks or grant privileges. Unique per (member, kind, period), so a
+/// retried settlement or a repeated evaluation can never award the same badge twice.
+model MemberBadge {
+  id        String   @id @default(cuid())
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id])
+  /// FIRST_EXCHANGE | COMMUNITY_REGULAR
+  kind      String
+  /// "once" for one-time badges; "YYYY-MM" (Hong Kong calendar month) for monthly badges.
+  period    String
+  awardedAt DateTime
+  /// What earned it (exchange ids, days, counterparty count) for explanations.
+  evidence  Json
+
+  @@unique([memberId, kind, period])
+  @@index([memberId, awardedAt])
 }
 
 // ───────────────────────── audit & system ─────────────────────────

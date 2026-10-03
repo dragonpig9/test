@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
-import type { CreateListingInput } from '@commonhours/shared';
+import type { CircleMessageInput, CreateListingInput } from '@commonhours/shared';
 import { POLICY, RULES } from '../../config/policy';
 import { makeCtx, type Ctx } from '../../core/context';
 import { addDays, addHours } from '../../core/dates';
@@ -18,6 +18,9 @@ import { confirmEmailVerification, requestEmailVerification } from '../profiles/
 import { createListing } from '../services/listing.service';
 import { currentRun } from '../daily-job/daily-job.schedule';
 import { setStudentDetails } from '../student/student.service';
+import { syncCircleMembership } from '../circles/circles.membership';
+import { postCircleMessage } from '../circles/circles.service';
+import { isDemoMode } from '../../config/demo-mode';
 import { expireStaleVouches, proposeVouch, respondToVouch } from '../vouches/vouch.service';
 
 /** The simulated "today" the demo starts at. */
@@ -176,15 +179,15 @@ export async function seedDemo(prisma: PrismaClient) {
   // 4. Listings (offers and requests).
   const listings: [Handle, CreateListingInput][] = [
     ['sam', { type: 'OFFER', title: 'Home-cooked Malaysian dinner', description: 'I cook a two-course Malaysian dinner (nasi lemak + kuih) in your kitchen or mine. Vegetarian on request.', category: 'Cooking', durationMinutes: 120, locationType: 'IN_PERSON', location: 'North side', availability: 'Weekday evenings, Saturdays', requiredSkills: [], trustTier: 'RESTRICTED' }],
-    ['mei', { type: 'OFFER', title: 'Maths & physics tutoring', description: 'Secondary-school maths and physics, exam practice and homework help.', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Weekends', requiredSkills: [] }],
-    ['mei', { type: 'OFFER', title: 'Mandarin ↔ English translation', description: 'Letters, forms and short documents. Up to 2 pages per hour.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Flexible', requiredSkills: [] }],
+    ['mei', { type: 'OFFER', title: 'Maths & physics tutoring', description: 'Secondary-school maths and physics, exam practice and homework help.', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Weekends', requiredSkills: [], tags: ['Tutoring'] }],
+    ['mei', { type: 'OFFER', title: 'Mandarin ↔ English translation', description: 'Letters, forms and short documents. Up to 2 pages per hour.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Flexible', requiredSkills: [], tags: ['Language practice'] }],
     ['kofi', { type: 'OFFER', title: 'Bike & small appliance repair', description: 'Bring it to the repair café; we fix it together.', category: 'Equipment repair', durationMinutes: 60, locationType: 'IN_PERSON', location: 'Repair café, High St', availability: 'Saturdays 10–14', requiredSkills: [] }],
-    ['priya', { type: 'OFFER', title: 'Posters, flyers and logos', description: 'Simple, accessible print design for community events.', category: 'Design', durationMinutes: 90, locationType: 'ONLINE', location: '', availability: 'Evenings', requiredSkills: [] }],
+    ['priya', { type: 'OFFER', title: 'Posters, flyers and logos', description: 'Simple, accessible print design for community events. Also happy to help with simple websites.', category: 'Design', durationMinutes: 90, locationType: 'ONLINE', location: '', availability: 'Evenings', requiredSkills: [], tags: ['Coding'] }],
     ['alice', { type: 'OFFER', title: 'Allotment planning session', description: 'Plan a year of planting for a small plot or balcony.', category: 'Gardening', durationMinutes: 60, locationType: 'IN_PERSON', location: 'Community allotment', availability: 'Sunday mornings', requiredSkills: [] }],
-    ['tomas', { type: 'OFFER', title: 'Hedge trimming & weeding', description: 'Tools provided. Green waste taken to the compost.', category: 'Gardening', durationMinutes: 120, locationType: 'IN_PERSON', location: 'Anywhere in town', availability: 'Weekday mornings', requiredSkills: [], trustTier: 'RESTRICTED' }],
-    ['lena', { type: 'OFFER', title: 'German conversation practice', description: 'Relaxed conversation for beginners and intermediate learners.', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Tue/Thu evenings', requiredSkills: [] }],
-    ['ben', { type: 'REQUEST', title: 'Washing machine door seal', description: 'The door seal leaks. I have the replacement part; need someone who knows how to fit it.', category: 'Equipment repair', durationMinutes: 180, locationType: 'IN_PERSON', location: 'East side', availability: 'Any weekday after 16:00', requiredSkills: ['Equipment repair'], trustTier: 'RESTRICTED' }],
-    ['lena', { type: 'REQUEST', title: 'Rental contract translation (German → English)', description: 'Help me understand a 4-page rental contract.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'This month', requiredSkills: ['German'] }],
+    ['tomas', { type: 'OFFER', title: 'Hedge trimming & weeding', description: 'Tools provided. Green waste taken to the compost.', category: 'Gardening', durationMinutes: 120, locationType: 'IN_PERSON', location: 'Anywhere in town', availability: 'Weekday mornings', requiredSkills: [], trustTier: 'RESTRICTED', tags: ['Moving and practical help'] }],
+    ['lena', { type: 'OFFER', title: 'German conversation practice', description: 'Relaxed conversation for beginners and intermediate learners.', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Tue/Thu evenings', requiredSkills: [], tags: ['Language practice', 'Tutoring'] }],
+    ['ben', { type: 'REQUEST', title: 'Washing machine door seal', description: 'The door seal leaks. I have the replacement part; need someone who knows how to fit it.', category: 'Equipment repair', durationMinutes: 180, locationType: 'IN_PERSON', location: 'East side', availability: 'Any weekday after 16:00', requiredSkills: ['Equipment repair'], trustTier: 'RESTRICTED', tags: ['Moving and practical help'] }],
+    ['lena', { type: 'REQUEST', title: 'Rental contract translation (German → English)', description: 'Help me understand a 4-page rental contract.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'This month', requiredSkills: ['German'], tags: ['Language practice'] }],
   ];
   const listingIds: Record<string, string> = {};
   for (const [owner, l] of listings) {
@@ -193,8 +196,8 @@ export async function seedDemo(prisma: PrismaClient) {
   }
   // More translation requests from different people → real demand for the only translation provider (Mei).
   const laterRequests: [Handle, string, CreateListingInput][] = [
-    ['ben', '2026-09-24T10:00:00Z', { type: 'REQUEST', title: 'Mandarin recipe cards into English', description: 'Six handwritten recipe cards from a friend’s grandmother.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Any evening', requiredSkills: ['Mandarin'] }],
-    ['priya', '2026-09-26T10:00:00Z', { type: 'REQUEST', title: 'Exhibition captions English → Mandarin', description: '12 short captions for the community photo exhibition.', category: 'Translation', durationMinutes: 120, locationType: 'ONLINE', location: '', availability: 'Before mid-October', requiredSkills: ['Mandarin'] }],
+    ['ben', '2026-09-24T10:00:00Z', { type: 'REQUEST', title: 'Mandarin recipe cards into English', description: 'Six handwritten recipe cards from a friend’s grandmother.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Any evening', requiredSkills: ['Mandarin'], tags: ['Language practice'] }],
+    ['priya', '2026-09-26T10:00:00Z', { type: 'REQUEST', title: 'Exhibition captions English → Mandarin', description: '12 short captions for the community photo exhibition.', category: 'Translation', durationMinutes: 120, locationType: 'ONLINE', location: '', availability: 'Before mid-October', requiredSkills: ['Mandarin'], tags: ['Language practice'] }],
     // A high-trust task: entering Alice's home while she is away. Alice also asks for relationship trust ≥ 0.5.
     ['alice', '2026-09-27T10:00:00Z', { type: 'REQUEST', title: 'Feed my cat and water plants while I’m away', description: 'Let yourself in with the key safe, feed Juniper and water the balcony plants, twice during my week away.', category: 'Other', durationMinutes: 60, locationType: 'IN_PERSON', location: 'North side', availability: 'One week in October', requiredSkills: [], trustTier: 'HIGH_TRUST', minRelationshipTrust: 0.5 }],
   ];
@@ -286,6 +289,32 @@ export async function seedDemo(prisma: PrismaClient) {
   await step('2026-09-28T10:00:00Z', 'mei', (tx, ctx) =>
     setStudentDetails(tx, ctx, ids.mei, { university: 'CityU', studentEmail: 'meichen3@my.cityu.edu.hk', currentStudentDeclaration: true }),
   );
+
+  // 6c. The HKU Circle (demo mode only): Priya and Ben add HKU student details. In demo mode that
+  // joins them to the circle as a self-declared affiliation (labelled "Demo student", never verified);
+  // a few messages give the circle something to read. Mei (CityU) stays pending verification, so the demo
+  // also shows a pending account continuing in demo mode. Circles create no trust or friendships.
+  if (isDemoMode()) {
+    const hku: [Handle, string, string][] = [
+      ['priya', 'priya.shah', '2026-09-28T11:00:00Z'],
+      ['ben', 'bencarter', '2026-09-28T11:30:00Z'],
+    ];
+    for (const [h, local, when] of hku) {
+      await step(when, h, async (tx, ctx) => {
+        await setStudentDetails(tx, ctx, ids[h], { university: 'HKU', studentEmail: `${local}@connect.hku.hk`, currentStudentDeclaration: true });
+        await syncCircleMembership(tx, ctx, ids[h], 'demo seed');
+      });
+    }
+    const messages: [Handle, string, string, CircleMessageInput['tags']][] = [
+      ['priya', '2026-09-29T12:10:00Z', 'Welcome to the HKU Circle! Post what you can help with and what you need. Tag it so people can find it.', []],
+      ['ben', '2026-09-29T18:40:00Z', 'Moving out of hall next weekend. I can lend a hand (and a trolley) to anyone else moving too.', ['Moving and practical help']],
+      ['priya', '2026-09-30T20:05:00Z', 'Happy to pair on a first web project or debug a portfolio site. Looking for someone to practise Mandarin with in return.', ['Coding', 'Language practice']],
+      ['ben', '2026-09-30T21:15:00Z', 'Anyone tutoring first-year stats? I can cook dinner as a thank-you exchange.', ['Tutoring']],
+    ];
+    for (const [h, when, body, tags] of messages) {
+      await step(when, h, (tx, ctx) => postCircleMessage(tx, ctx, ids[h], 'HKU', { body, tags }));
+    }
+  }
 
   // 7. Housekeeping at "today": expire stale vouches and old credits (into the Community Credit Pool), refresh all scores.
   await step(DEMO_NOW, null, async (tx, ctx) => {

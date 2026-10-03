@@ -3,6 +3,8 @@
 > **Recognise value that gets overlooked.**
 > Turn the skills your community already has into help everyone can access, with clear agreements and shared accountability.
 
+**Find your circle. Share your skills. Build trust through helping.** CommonHours connects quality members through useful, niche communities, with an emphasis on trust, connection and meaningful exchanges.
+
 CommonHours is a community service-exchange website for the HacKU fintech hackathon. Members trade tutoring, cooking, translation, design, repairs and more using **time credits** (1 hour = 1 credit by default; a peer-reviewed skill tier and measured demand can raise the price within published bounds). They find each other through **consented vouches**, agree **terms before work starts**, and resolve disagreements **against those terms** using randomly selected community attestors.
 
 There is no blockchain, no cryptocurrency, no cash conversion and no AI scoring. Every balance, permission, score and decision comes from backend rules (`apps/api/src/config/policy.ts`) and persisted records, and every change is written to an audit trail in the same database transaction.
@@ -50,6 +52,23 @@ The earlier "Subscription Hunter" starter was not relevant to this problem and l
 
 ---
 
+## Hackathon demo (`DEMO_MODE=true`)
+
+`DEMO_MODE` is one server setting (`apps/api/src/config/demo-mode.ts`, read from the environment only; browsers cannot switch it through storage, headers or query strings). `GET /api/health` reports it to the web app. With it on, verification never blocks access: no email links, codes, documents or manual checks, and no blocking banners. Everything else (invitation codes, credibility thresholds, the credit floor, pricing, the pool) is unchanged. Demo admission is recorded separately (`Member.demoAdmittedAt`); verified flags are never set, and those members show **Demo student** / **Demo member** instead of a verified badge. Set `DEMO_MODE=false` and the original verification applies again on the next request, for existing sessions and circle memberships too.
+
+Five-minute flow:
+
+| # | Do this | What to point at |
+| --- | --- | --- |
+| 1 | Sign out → **Join as a student** | No invitation code anywhere |
+| 2 | Pick **HKU**, type a username (placeholder `XXX`), switch to CUHK and back | The suffix `@connect.hku.hk` changes, the username stays, the full address is previewed |
+| 3 | Tick the current-student declaration → **Join** | Straight into the app; "Demo student" label; the notice says nothing was emailed |
+| 4 | **Circles** → HKU Circle | Joined automatically (demo/self-declared). Seeded posts from Priya and Ben, topic tags (Coding, Tutoring, Language practice, Moving and practical help) |
+| 5 | Post a message with a tag; open the circle board | Persisted chat; requests and offers from circle members filtered by tag |
+| 6 | Request a service from Priya or Ben, switch accounts (demo bar), accept, **+1d**, both confirm | A normal exchange: same pricing, reservation and settlement |
+| 7 | **Overview → Friends activity** | Month and year selectors (Hong Kong time); credits earned, credits spent and activity points for you and your direct friends; ⓘ explains the points |
+| 8 | **Overview** banner / **My Profile → Badges** | "First Exchange" celebration; toggle whether others see your badges |
+
 ## Three-minute demo
 
 The **Demo guide** (top bar → "Demo guide", also on the Overview page) tracks progress from the database and offers one-click "Switch to …" buttons. Every step calls the real API.
@@ -76,8 +95,8 @@ New features (development: the demo bar also shows **Next 00:00 HKT** and **Run 
 
 | Feature | How to demonstrate |
 | --- | --- |
-| Student registration | Sign out → Join with an invitation code → *Register as a student*: pick HKU, type `chantaiman`, pick CUHK (suffix changes, username kept), paste `x@connect.hku.hk` (only `x` stays), tick the declaration. Existing members: **My Profile → Student details** (Mei is a seeded CityU student, unverified) → *Send a code* → copy it from the development preview → *Verify*. Change the university: the status returns to *not verified*. |
-| Leaderboard | Overview → 好友活躍排行榜. Settle the Mei ↔ Sam exchanges (demo steps 5–7): both gain 1 point (two exchanges, same day, same person = 1). |
+| Student registration | Sign out → **Join with an invitation** → *Register as a student*: pick HKU, type `chantaiman`, pick CUHK (suffix changes, username kept), paste `x@connect.hku.hk` (only `x` stays), tick the declaration. Existing members: **My Profile → Student details** (Mei is a seeded CityU student, unverified) → *Send a code* → copy it from the development preview → *Verify*. Change the university: the status returns to *not verified*. |
+| Friends activity | Overview → **Friends activity**. Settle the Mei ↔ Sam exchanges (demo steps 5–7): both gain 1 point (two exchanges, same day, same person = 1); credits earned and spent are shown separately. Pick an earlier month to see history. |
 | Pool | Overview → Community Credit Pool shows 5 credits (Tomás's expired credits). After step 7, press **Next 00:00 HKT**: Mei and Sam are tied on 1 point → ceil(2 ÷ 2) = 1 recipient chosen by the date seed, paid 5; **Run daily job** again says nothing was repeated. |
 | Negative-balance reminders | The first daily run notifies close friends of seeded members negative for 50+ days (e.g. Mei sees “Alice Okafor could use an opportunity…”). |
 
@@ -129,8 +148,11 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 - **Profiles.** Photo URL, intro, affiliation, neighbourhood, languages, skills and tiers, availability, completed services, credibility breakdown and contact-verification status — self-reported, verified and record-based data shown separately. Email, phone and address private by default.
 - **Notifications.** Persistent in-app notifications (bell, list, home-screen card, mark read) written after commit with dedupe keys; optional email via a persisted outbox with retries and a Gmail/SMTP adapter; per-member opt-in and categories.
 - **Student registration.** “Register as a student” on the Join page (and *Student details* on My Profile for existing members): eight university buttons (HKU, CUHK, HKUST, PolyU, CityU, HKBU, Lingnan, EdUHK) with full names, keyboard and touch friendly; username field with the university's domain as a fixed suffix (placeholder `XXX`), full-address preview, no duplicate domain or extra `@`. The mapping lives only in `packages/shared/src/universities.ts`; the API re-validates it. Ownership is proven by an expiring, single-use 6-digit code; changing university/email resets verification; a current-student declaration is stored separately. Development-only preview codes are never labelled verified.
-- **好友活躍排行榜 (friends activity leaderboard)** on the home screen: you + accepted direct friends (active vouches or earned relationships, minus declared conflicts), rank, avatar, university, points, “You” highlight and the rules. One shared scoring function: 1 point per distinct counterparty per Hong Kong day from settled exchanges in the last 7 days; at most 2 points per pair per window (the earned-trust anti-abuse limit). Separate from credits, credibility and relationship strength.
-- **Community Credit Pool and daily job.** Expired credits flow into a never-expiring pool. Every day at 00:00 Asia/Hong_Kong the server (no browser needed) expires due credits, snapshots activity for the whole community, and pays the top ceil(active ÷ 2) members equally: floor(pool ÷ recipients) hundredths each, remainder retained (108 ÷ 456 → 0.23 each, 104.88 paid, 3.12 kept). Ties use a date-seeded shuffle; inputs are recorded. One transaction, unique run/distribution/grant rows, so retries never pay twice.
+- **Two ways to join.** *Join with an invitation* (code still validated, vouch terms as before) and *Join as a student* (no code, no invitation or inviter created, the usual new-member rules). Student accounts must verify their university email unless demo mode is on.
+- **University circles** ("HKU Circle" …). One room per university with persisted messages and topic tags, plus a board of circle members' requests and offers. Entry needs genuine university email verification, or a self-declared affiliation in demo mode. Access is checked on every request; changing university keeps history but moves access. Circle membership creates no friendships, vouches, credibility or relationship strength.
+- **Friends activity** on the home screen, by calendar month (Asia/Hong_Kong): you + accepted direct friends with credits earned and credits spent from settled service transfers (provider and recipient counted separately, refunds subtracted; pool rewards, expiry, gifts and admin adjustments excluded) and activity points (1 per qualifying settled service, at most 1 per pair per Hong Kong day and 2 per pair per month, across roles). Equal points share a rank. Points are separate from credits, credibility and relationship strength, and are read-only.
+- **Badges.** *First Exchange* (once) and *Community Regular* (a month with points on 3+ Hong Kong days with 2+ different people). In-app celebration; members choose whether others see them. No economic, trust or permission effect.
+- **Community Credit Pool and daily job.** Expired credits flow into a never-expiring pool. Every day at 00:00 Asia/Hong_Kong the server (no browser needed) expires due credits, snapshots the last 7 days of activity for the whole community (separate from the monthly Friends activity view), and pays the top ceil(active ÷ 2) members equally: floor(pool ÷ recipients) hundredths each, remainder retained (108 ÷ 456 → 0.23 each, 104.88 paid, 3.12 kept). Ties use a date-seeded shuffle; inputs are recorded. One transaction, unique run/distribution/grant rows, so retries never pay twice.
 - **Close-friend reminders.** A continuous negative *posted* balance period is tracked on every ledger posting (partial repayment keeps the timer, reaching 0 resets it). After the daily redistribution, members negative for more than 50 days get up to 3 closest friends (relationship strength) notified once per period — no balance or task details — or a private reminder if no friend qualifies.
 - **Debug panel** (development builds only). Thirteen tabs backed by `/api/debug/*` (incl. task eligibility, pricing, trust updates, jury candidates, notifications & email). Errors carry a human message, a stable code, the module and a correlation id. Password hashes and tokens are never returned.
 

@@ -1,3 +1,4 @@
+import { isDemoMode } from '../../config/demo-mode';
 import { env } from '../../config/env';
 
 /**
@@ -43,7 +44,7 @@ function smtpConfigured() {
 export function deliveryMode(): DeliveryMode {
   if (override) return 'smtp';
   if ((env.email.provider === 'gmail' && gmailConfigured()) || (env.email.provider === 'smtp' && smtpConfigured())) return 'smtp';
-  return env.demoMode ? 'preview' : 'disabled';
+  return isDemoMode() ? 'preview' : 'disabled';
 }
 
 export function deliveryNote(mode = deliveryMode()): string {

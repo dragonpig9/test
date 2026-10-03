@@ -7,10 +7,12 @@ import { useAuth } from '../../lib/auth';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
 import { StudentDetailsFields, studentInput, useStudentDraft } from '../student/StudentDetailsFields';
-import { join, previewInvitation } from './api';
+import { join, previewInvitation, usePublicConfig } from './api';
+import { JoinHeader } from './JoinChooserPage';
 
-/** Joining requires accepting the community terms AND the vouch terms shown here. */
-export function JoinPage() {
+/** Route 1, "Join with an invitation": the community terms AND the vouch terms. The code is always validated. */
+export function InvitationJoinPage() {
+  const demoMode = usePublicConfig().data?.demoMode ?? false;
   const [params] = useSearchParams();
   const [code, setCode] = useState(params.get('code') ?? '');
   const [submittedCode, setSubmittedCode] = useState(params.get('code') ?? '');
@@ -35,11 +37,8 @@ export function JoinPage() {
   const i = inv.data?.invitation;
   return (
     <div className="mx-auto max-w-2xl p-4 py-10">
-      <Link to="/" className="text-sm text-brand-700 hover:underline">
-        ← Back to sign in
-      </Link>
-      <h1 className="mt-4">Join CommonHours</h1>
-      <p className="mt-1 text-sm text-slate-600">Membership is invite-only. Enter your invitation code to read the terms before you join.</p>
+      <JoinHeader title="Join with an invitation" />
+      <p className="mt-1 text-sm text-slate-600">Enter your invitation code to read the terms before you join. No invitation? <Link to="/join/student" className="font-medium text-brand-700 hover:underline">Join as a student</Link>.</p>
       <form
         className="mt-6 flex gap-2"
         onSubmit={(e) => {
@@ -105,7 +104,7 @@ export function JoinPage() {
                 <div className="grid gap-2 sm:grid-cols-2">
                   {[
                     { v: false, t: 'Register as a community member', d: 'Use any email address.' },
-                    { v: true, t: 'Register as a student', d: 'Use your university email; verify it with a code.' },
+                    { v: true, t: 'Register as a student', d: demoMode ? 'Use your university email (demo mode: no verification needed).' : 'Use your university email; verify it with a code.' },
                   ].map((o) => (
                     <label key={String(o.v)} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm ${asStudent === o.v ? 'border-brand-700 bg-brand-50 ring-2 ring-brand-600' : 'border-slate-300'}`}>
                       <input type="radio" name="account-type" className="mt-1" checked={asStudent === o.v} onChange={() => setAsStudent(o.v)} />
@@ -120,7 +119,11 @@ export function JoinPage() {
               {asStudent ? (
                 <div className="sm:col-span-2">
                   <StudentDetailsFields draft={student} onChange={setStudent} />
-                  <p className="mt-2 text-xs text-slate-500">After joining, a one-time code is sent to this address. “University email verified” appears only after you enter it.</p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {demoMode
+                      ? 'Demo mode: no code is sent and nothing is verified. Your affiliation is shown as “Demo student”, and you join your university circle straight away.'
+                      : 'After joining, a one-time code is sent to this address. “University email verified” appears only after you enter it.'}
+                  </p>
                 </div>
               ) : (
                 <Field label="Email" htmlFor="jemail">

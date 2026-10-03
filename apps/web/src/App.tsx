@@ -3,13 +3,16 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Loading } from './components/ui';
 import { useAuth } from './lib/auth';
-import { JoinPage } from './features/auth/JoinPage';
+import { JoinChooserPage } from './features/auth/JoinChooserPage';
+import { InvitationJoinPage } from './features/auth/JoinPage';
+import { StudentJoinPage } from './features/auth/StudentJoinPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { OverviewPage } from './features/dashboard/OverviewPage';
 import { TrustNetworkPage } from './features/trust-graph/TrustNetworkPage';
 import { ServiceBoardPage } from './features/services/ServiceBoardPage';
 import { ExchangesPage } from './features/exchanges/ExchangesPage';
 import { ExchangeDetailPage } from './features/exchanges/ExchangeDetailPage';
+import { CirclesPage } from './features/circles/CirclesPage';
 import { CreditsPage } from './features/credits/CreditsPage';
 import { CredibilityPage } from './features/credibility/CredibilityPage';
 import { DisputesPage } from './features/disputes/DisputesPage';
@@ -18,6 +21,7 @@ import { ActivityPage } from './features/audit/ActivityPage';
 import { AccountPage } from './features/withdrawal/AccountPage';
 import { NotificationsPage } from './features/notifications/NotificationsPage';
 import { ProfilePage } from './features/profiles/ProfilePage';
+import { VerificationGate } from './features/verification/VerificationGate';
 
 // The debug panel is development-only and loaded lazily so it never ships in production bundles' main chunk.
 const DebugPanel = lazy(() => import('./features/debug/DebugPanel'));
@@ -25,20 +29,25 @@ const SHOW_DEBUG = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEBUG === 
 
 /** Routing only. Each page lives in its feature folder. */
 export function App() {
-  const { signedIn, loading } = useAuth();
+  const { signedIn, loading, me } = useAuth();
   if (loading) return <Loading label="Signing you in…" />;
   if (!signedIn) {
     return (
       <Routes>
-        <Route path="/join" element={<JoinPage />} />
+        <Route path="/join" element={<JoinChooserPage />} />
+        <Route path="/join/invitation" element={<InvitationJoinPage />} />
+        <Route path="/join/student" element={<StudentJoinPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );
   }
+  // Normal mode: student-route accounts verify first. Demo mode never shows this screen.
+  if (me?.admission.verificationRequired) return <VerificationGate />;
   return (
     <Layout>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
+        <Route path="/circles" element={<CirclesPage />} />
         <Route path="/trust" element={<TrustNetworkPage />} />
         <Route path="/services" element={<ServiceBoardPage />} />
         <Route path="/exchanges" element={<ExchangesPage />} />
@@ -52,7 +61,7 @@ export function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:id" element={<ProfilePage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/join" element={<Navigate to="/" replace />} />
+        <Route path="/join/*" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {SHOW_DEBUG && (

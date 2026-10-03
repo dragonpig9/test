@@ -31,7 +31,8 @@ services:
       # The API serves apps/web/dist itself, so no Cloudflare Pages project or CORS setup is needed.
       - key: SERVE_WEB
         value: "true"
-      # Public hackathon demo: enables the account switcher, simulated clock and reset button for everyone.
+      # Public hackathon demo: verification never blocks access (see .env.example), plus the account
+      # switcher, simulated clock and reset button for everyone. Set to "false" to restore genuine verification.
       - key: DEMO_MODE
         value: "true"
       - key: DEBUG_ENDPOINTS

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LIABILITY_OPTIONS, SERVICE_CATEGORIES, VOUCH_STRENGTHS } from '../constants';
+import { LIABILITY_OPTIONS, SERVICE_CATEGORIES, TOPIC_TAGS, VOUCH_STRENGTHS } from '../constants';
 import { studentDetailsSchema } from './student';
 
 // Request body schemas used by the API (authoritative) and by web forms (early feedback).
@@ -26,6 +26,18 @@ export const joinSchema = z.object({
   acceptVouchTerms: z.literal(true, { errorMap: () => ({ message: 'You must accept the vouch terms' }) }),
   /** "Register as a student": the university email becomes the login email and must be verified. */
   student: studentDetailsSchema.optional(),
+});
+
+/**
+ * "Join as a student": no invitation code anywhere (frontend, backend or database). The university
+ * email (username + the university's fixed suffix) is the login email; the API re-checks the domain.
+ */
+export const studentJoinSchema = z.object({
+  displayName: z.string().min(2).max(60),
+  handle: z.string().regex(/^[a-z0-9_-]{2,24}$/, 'Lowercase letters, digits, - or _'),
+  password: z.string().min(8, 'At least 8 characters'),
+  acceptCommunityTerms: z.literal(true, { errorMap: () => ({ message: 'You must accept the community terms' }) }),
+  student: studentDetailsSchema,
 });
 
 export const createInvitationSchema = z.object({
@@ -67,7 +79,16 @@ export const createListingSchema = z.object({
   location: z.string().max(120).default(''),
   availability: z.string().min(2).max(200),
   requiredSkills: z.array(z.string().min(1).max(40)).max(10).default([]),
+  /** Topic tags for discovery (optional). */
+  tags: z.array(z.enum(TOPIC_TAGS)).max(TOPIC_TAGS.length).optional(),
   ...requirementFields,
+});
+
+export const badgeVisibilitySchema = z.object({ showBadges: z.boolean() });
+
+export const circleMessageSchema = z.object({
+  body: z.string().trim().min(1, 'Write a message').max(1000),
+  tags: z.array(z.enum(TOPIC_TAGS)).max(TOPIC_TAGS.length).default([]),
 });
 
 export const exchangeTermsSchema = z.object({
@@ -174,6 +195,7 @@ export * from './student';
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type JoinInput = z.infer<typeof joinSchema>;
+export type StudentJoinInput = z.infer<typeof studentJoinSchema>;
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;
 export type ProposeVouchInput = z.infer<typeof proposeVouchSchema>;
 export type AmendVouchInput = z.infer<typeof amendVouchSchema>;
@@ -183,5 +205,6 @@ export type ProposeExchangeInput = z.infer<typeof proposeExchangeSchema>;
 export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
 export type EvidenceInput = z.infer<typeof evidenceSchema>;
 export type VoteInput = z.infer<typeof voteSchema>;
+export type CircleMessageInput = z.infer<typeof circleMessageSchema>;
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
 export type SkillClaimInput = z.infer<typeof skillClaimSchema>;

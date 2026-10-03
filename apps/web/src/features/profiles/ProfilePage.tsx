@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
 import { claimSkill, confirmEmailCode, requestEmailCode, requestPhoneCode, reviewSkill, updateProfile, useOutbox, useProfile, useReviewableClaims, useSkills } from './api';
+import { MyBadgesCard } from '../badges/Badges';
 import { StudentStatusCard } from '../student/StudentStatusCard';
 import { ProfileCard, VerificationPill } from './ProfileCard';
 
@@ -46,6 +47,7 @@ export function ProfilePage() {
           <Card title="How others see you">
             <ProfileCard p={p} />
           </Card>
+          <MyBadgesCard />
           <VerificationCard p={p} />
           <StudentStatusCard />
         </div>

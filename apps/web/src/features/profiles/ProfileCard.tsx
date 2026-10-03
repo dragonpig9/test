@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import type { ProfileView, VerificationStatus } from '@commonhours/shared';
-import { Avatar } from '../../components/MemberChip';
+import { Avatar, DemoBadge } from '../../components/MemberChip';
 import { fmtDate } from '../../lib/format';
+import { BadgeShelf } from '../badges/Badges';
 
 const VERIFY_STYLE: Record<VerificationStatus['status'], string> = {
   VERIFIED: 'bg-emerald-100 text-emerald-900',
@@ -52,12 +53,14 @@ export function ProfileCard({ p, compact }: { p: ProfileView; compact?: boolean 
                 className={clsx('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', p.member.universityEmailVerified ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700')}
                 title="Current enrolment is self-declared; university email ownership is verified separately."
               >
-                {p.member.university} student{p.member.universityEmailVerified ? ' · ✓ University email verified' : ' · email not verified'}
+                {p.member.university} student{p.member.universityEmailVerified ? ' · ✓ University email verified' : p.member.demoBadge ? '' : ' · email not verified'}
               </span>
             )}
+            <DemoBadge label={p.member.demoBadge} />
           </div>
         </div>
       </div>
+      {p.badges && p.badges.length > 0 && <BadgeShelf badges={p.badges} />}
       <section>
         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Self-reported (not checked)</h3>
         {s.intro && <p className="text-slate-700">{s.intro}</p>}

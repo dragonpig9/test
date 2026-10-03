@@ -1,4 +1,5 @@
 import { createApp } from './app';
+import { isDemoMode } from './config/demo-mode';
 import { env } from './config/env';
 import { makeCtx, readClock } from './core/context';
 import { prisma, withTx } from './core/db';
@@ -7,7 +8,7 @@ import { sweepReminders } from './modules/notifications/notification.reminders';
 import { deliverOutbox, recoverStuckEmails } from './modules/notifications/notification.service';
 
 createApp().listen(env.port, () => {
-  console.log(`CommonHours API listening on http://localhost:${env.port} (demo mode: ${env.demoMode}, debug endpoints: ${env.debugEndpoints}, daily job scheduler: ${env.dailyJobScheduler})`);
+  console.log(`CommonHours API listening on http://localhost:${env.port} (demo mode: ${isDemoMode()}, debug endpoints: ${env.debugEndpoints}, daily job scheduler: ${env.dailyJobScheduler})`);
 });
 
 // Daily job at 00:00 Asia/Hong_Kong (credit expiry → pool redistribution → negative-balance reminders).

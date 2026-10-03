@@ -9,6 +9,7 @@ import { Avatar } from './MemberChip';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: '◎' },
+  { to: '/circles', label: 'Circles', icon: '◍' },
   { to: '/trust', label: 'Trust Network', icon: '⟁' },
   { to: '/services', label: 'Service Board', icon: '▦' },
   { to: '/exchanges', label: 'My Exchanges', icon: '⇄' },

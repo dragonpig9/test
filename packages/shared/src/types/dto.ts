@@ -1,3 +1,4 @@
+import type { AdmissionView, BadgeView } from './community';
 import type {
   AssignmentStatus,
   DisputeCondition,
@@ -32,6 +33,8 @@ export interface MemberSummary {
   /** Student accounts: university code (public) and whether the university email was verified. */
   university?: string | null;
   universityEmailVerified?: boolean;
+  /** "Demo student" / "Demo member" when admitted through the demo-mode bypass (never a verified badge). */
+  demoBadge?: 'Demo student' | 'Demo member' | null;
 }
 
 export interface MemberProfile extends MemberSummary {
@@ -56,6 +59,7 @@ export interface Me {
   member: MemberProfile;
   permissions: PermissionCheck[];
   demoMode: boolean;
+  admission: AdmissionView;
   now: string;
 }
 
@@ -155,6 +159,7 @@ export interface ListingView {
   location: string;
   availability: string;
   requiredSkills: string[];
+  tags: string[];
   status: ListingStatus;
   createdAt: string;
   trustTier: TrustTier;
@@ -524,6 +529,8 @@ export interface ProfileView {
   contact: { email: string | null; phone: string | null; visibility: string } | null;
   /** Only for the member themselves. */
   private: { loginEmail: string; homeAddress: string | null; shareContactWithPartners: boolean; juryAvailable: boolean } | null;
+  /** Recognition badges; null when the member chose to hide them (the member always sees their own). */
+  badges: BadgeView[] | null;
   privacyNote: string;
 }
 

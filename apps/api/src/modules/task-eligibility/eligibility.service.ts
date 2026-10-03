@@ -1,6 +1,6 @@
 import type { Exchange, Listing, Member, TrustTier } from '@prisma/client';
 import type { TaskEligibilityView } from '@commonhours/shared';
-import { env } from '../../config/env';
+import { isDemoMode } from '../../config/demo-mode';
 import { RULES } from '../../config/policy';
 import type { Ctx } from '../../core/context';
 import type { Db, Tx } from '../../core/db';
@@ -35,7 +35,7 @@ export async function evaluateFor(db: Db, q: EligibilityQuery, now: Date, cache:
     provider: { name: q.provider.displayName, active: q.provider.status === 'ACTIVE', score: cache.score ?? (await scoreOf(db, q.provider.id, now)), contact: contactVerificationOf(q.provider) },
     relationshipTrust: trust ? relationshipTrust(trust, q.provider.id, q.requester.id) : 0,
     ownerApproval: q.ownerApproval,
-    demoMode: env.demoMode,
+    demoMode: isDemoMode(),
   });
 }
 

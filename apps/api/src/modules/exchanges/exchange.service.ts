@@ -5,6 +5,7 @@ import type { Ctx } from '../../core/context';
 import { lockRow, type Tx } from '../../core/db';
 import { AppError, forbidden } from '../../core/errors';
 import { assertTransition } from '../../core/state-machine';
+import { onExchangeSettled } from '../badges/badges.hooks';
 import { recordAudit } from '../audit/audit.service';
 import { refreshCredibility, scoreOf } from '../credibility/credibility.service';
 import { freezeReservation, releaseReservation, reserveCredits, settleReservation } from '../ledger/ledger.service';
@@ -467,6 +468,8 @@ async function settle(tx: Tx, ctx: Ctx, ex: Exchange, opts: { amount?: number; v
   // Earned trust only for exchanges BOTH parties confirmed in full (never disputed/partial ones).
   if (opts.earnTrust) await recordEarnedTrust(tx, ctx, ex);
   await refreshCredibility(tx, ctx, [ex.providerId, ex.recipientId], `exchange settled (${opts.via})`);
+  // Recognition badges are evaluated after this settlement commits (never part of the economics).
+  onExchangeSettled(ctx, ex.providerId, ex.recipientId);
   const [provider, recipient] = await Promise.all([getMember(tx, ex.providerId), getMember(tx, ex.recipientId)]);
   tell(ctx, ex, provider, 'credits.settled', 'credits', `You received ${c(paid)} credit(s) for “${ex.deliverable}”`, `${recipient.displayName} paid ${c(paid)} credit(s) (settled via ${opts.via}).`, 'settled');
   tell(ctx, ex, recipient, 'credits.settled', 'credits', `${c(paid)} credit(s) paid for “${ex.deliverable}”`, `Paid to ${provider.displayName} (settled via ${opts.via}). Your reservation is closed.`, 'settled');

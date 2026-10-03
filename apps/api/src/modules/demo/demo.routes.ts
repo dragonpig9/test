@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { advanceClockSchema, switchAccountSchema } from '@commonhours/shared';
+import { isDemoMode } from '../../config/demo-mode';
 import { env } from '../../config/env';
 import { prisma, withTx } from '../../core/db';
 import { AppError } from '../../core/errors';
@@ -15,7 +16,7 @@ export const demoRouter = Router();
 const M = 'demo';
 
 demoRouter.use((_req, _res, next) => {
-  if (!env.demoMode) return next(new AppError('DEMO_DISABLED', 'Demo mode is disabled on this server.', M));
+  if (!isDemoMode()) return next(new AppError('DEMO_DISABLED', 'Demo mode is disabled on this server.', M));
   next();
 });
 
