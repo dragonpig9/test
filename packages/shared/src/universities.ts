@@ -4,14 +4,14 @@
  * To add or change a university, edit this list (and nothing else).
  */
 export const UNIVERSITIES = [
-  { code: 'HKU', name: 'The University of Hong Kong', domain: 'connect.hku.hk' },
-  { code: 'CUHK', name: 'The Chinese University of Hong Kong', domain: 'link.cuhk.edu.hk' },
-  { code: 'HKUST', name: 'The Hong Kong University of Science and Technology', domain: 'connect.ust.hk' },
-  { code: 'PolyU', name: 'The Hong Kong Polytechnic University', domain: 'connect.polyu.hk' },
+  { code: 'HKU', name: 'University of Hong Kong', domain: 'connect.hku.hk' },
+  { code: 'CUHK', name: 'Chinese University of Hong Kong', domain: 'link.cuhk.edu.hk' },
+  { code: 'HKUST', name: 'Hong Kong University of Science and Technology', domain: 'connect.ust.hk' },
+  { code: 'PolyU', name: 'Hong Kong Polytechnic University', domain: 'connect.polyu.hk' },
   { code: 'CityU', name: 'City University of Hong Kong', domain: 'my.cityu.edu.hk' },
   { code: 'HKBU', name: 'Hong Kong Baptist University', domain: 'life.hkbu.edu.hk' },
   { code: 'Lingnan', name: 'Lingnan University', domain: 'ln.hk' },
-  { code: 'EdUHK', name: 'The Education University of Hong Kong', domain: 's.eduhk.hk' },
+  { code: 'EdUHK', name: 'Education University of Hong Kong', domain: 's.eduhk.hk' },
 ] as const;
 
 export type University = (typeof UNIVERSITIES)[number];

@@ -12,17 +12,15 @@ import { ensureMemberAccount } from '../ledger/ledger.repo';
 import { assertCanCommit, toSummary } from '../members/member.repo';
 import { notify } from '../notifications/notification.events';
 import { maxPenaltyPoints, vouchTermsText } from '../vouches/vouch.rules';
+import { SHARED_COMMUNITY_TERMS } from '../onboarding/onboarding.terms';
 import { setStudentDetails } from '../student/student.service';
 import { createVouchFromInvitation } from '../vouches/vouch.service';
 
 const MODULE = 'invitations';
 
 export const COMMUNITY_TERMS = [
-  'Membership is invite-only. Your inviter vouches for you and accepts a bounded credibility liability.',
-  'Every hour of service is worth one time credit, whatever the service. Credits cannot be bought, sold or converted to cash.',
-  'Before work starts, both members agree the terms: who provides what, duration, time, punctuality, credits, gift bonus, cancellation and confirmation deadline.',
-  'Disagreements are judged only against the terms agreed before the service, by randomly selected community attestors.',
-  'You may leave at any time; open obligations, disputes and history remain.',
+  'You are joining with an invitation. Your inviter vouches for you and accepts a bounded credibility liability.',
+  ...SHARED_COMMUNITY_TERMS,
 ];
 
 function newCode() {

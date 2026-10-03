@@ -3,7 +3,9 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Loading } from './components/ui';
 import { useAuth } from './lib/auth';
-import { JoinPage } from './features/auth/JoinPage';
+import { JoinChooserPage } from './features/auth/JoinChooserPage';
+import { InvitationJoinPage } from './features/auth/JoinPage';
+import { StudentJoinPage } from './features/auth/StudentJoinPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { OverviewPage } from './features/dashboard/OverviewPage';
 import { TrustNetworkPage } from './features/trust-graph/TrustNetworkPage';
@@ -31,7 +33,9 @@ export function App() {
   if (!signedIn) {
     return (
       <Routes>
-        <Route path="/join" element={<JoinPage />} />
+        <Route path="/join" element={<JoinChooserPage />} />
+        <Route path="/join/invitation" element={<InvitationJoinPage />} />
+        <Route path="/join/student" element={<StudentJoinPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );
@@ -55,7 +59,7 @@ export function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:id" element={<ProfilePage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/join" element={<Navigate to="/" replace />} />
+        <Route path="/join/*" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {SHOW_DEBUG && (

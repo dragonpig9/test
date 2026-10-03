@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth';
 import { useAction } from '../../lib/mutations';
 import { switchAccount, useDemoState } from '../demo/api';
 import { login } from './api';
+import { TAGLINE } from './JoinChooserPage';
 
 export function LoginPage() {
   const { signIn } = useAuth();
@@ -24,13 +25,15 @@ export function LoginPage() {
             </span>
             <span className="text-2xl font-semibold tracking-tight">CommonHours</span>
           </div>
-          <p className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-slate-900">Recognise value that gets overlooked.</p>
+          <p className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-slate-900">{TAGLINE}</p>
           <p className="mt-3 text-slate-600">
-            Turn the skills your community already has into help everyone can access — with clear agreements and shared accountability. One hour of help = one time
-            credit, whatever the skill.
+            CommonHours connects members through useful, niche communities, starting with one circle per Hong Kong university. Share what you are good at, ask for
+            what you need, and build trust through meaningful exchanges. One hour of help = one time credit, whatever the skill.
           </p>
           <ul className="mt-6 space-y-2 text-sm text-slate-700">
-            <li>• Invite-only membership with consented, bounded vouches</li>
+            <li>• Join with an invitation or as a student of a Hong Kong university</li>
+            <li>• Circles for Coding, Tutoring, Language practice, and Moving and practical help</li>
+            <li>• Consented, bounded vouches; trust is earned through helping</li>
             <li>• Terms agreed before work starts; disputes judged only against them</li>
             <li>• Every balance, score and decision is explainable and audited</li>
           </ul>
@@ -55,12 +58,14 @@ export function LoginPage() {
               Sign in
             </Button>
           </form>
-          <p className="mt-4 text-sm text-slate-600">
-            Have an invitation code?{' '}
-            <Link className="font-medium text-brand-700 hover:underline" to="/join">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <Link className="rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-medium text-slate-800 hover:border-brand-400 hover:bg-brand-50" to="/join/invitation">
               Join with an invitation
             </Link>
-          </p>
+            <Link className="rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-medium text-slate-800 hover:border-brand-400 hover:bg-brand-50" to="/join/student">
+              Join as a student
+            </Link>
+          </div>
           {demo.data && (
             <div className="mt-6 border-t border-slate-200 pt-5">
               <p className="text-sm font-semibold text-slate-900">

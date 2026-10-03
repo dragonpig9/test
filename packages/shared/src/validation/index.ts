@@ -28,6 +28,18 @@ export const joinSchema = z.object({
   student: studentDetailsSchema.optional(),
 });
 
+/**
+ * "Join as a student": no invitation code anywhere (frontend, backend or database). The university
+ * email (username + the university's fixed suffix) is the login email; the API re-checks the domain.
+ */
+export const studentJoinSchema = z.object({
+  displayName: z.string().min(2).max(60),
+  handle: z.string().regex(/^[a-z0-9_-]{2,24}$/, 'Lowercase letters, digits, - or _'),
+  password: z.string().min(8, 'At least 8 characters'),
+  acceptCommunityTerms: z.literal(true, { errorMap: () => ({ message: 'You must accept the community terms' }) }),
+  student: studentDetailsSchema,
+});
+
 export const createInvitationSchema = z.object({
   inviteeName: z.string().min(2).max(60),
   strength: strengthSchema,
@@ -174,6 +186,7 @@ export * from './student';
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type JoinInput = z.infer<typeof joinSchema>;
+export type StudentJoinInput = z.infer<typeof studentJoinSchema>;
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;
 export type ProposeVouchInput = z.infer<typeof proposeVouchSchema>;
 export type AmendVouchInput = z.infer<typeof amendVouchSchema>;
