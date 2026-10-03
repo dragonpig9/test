@@ -15,4 +15,4 @@ export interface DemoState {
 export const useDemoState = (enabled = true) => useQuery({ queryKey: ['demo'], queryFn: () => api<DemoState>('/demo/state'), enabled, retry: false });
 export const switchAccount = (handle: string) => api<{ token: string }>('/demo/switch', { body: { handle } });
 export const resetDemo = () => api<{ ok: true }>('/demo/reset', { body: {} });
-export const advanceClock = (days: number) => api<{ now: string; expiredCredits: { name: string; amount: number }[]; expiredVouches: number; disputesNeedingReview: number }>('/demo/clock/advance', { body: { days } });
+export const advanceClock = (days: number) => api<{ now: string; expiredCredits: { name: string; amount: number }[]; expiredVouches: number; disputesNeedingReview: number; reminders?: number }>('/demo/clock/advance', { body: { days } });

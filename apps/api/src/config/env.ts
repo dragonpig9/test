@@ -18,6 +18,33 @@ export const env = {
   // Built web app to serve from the API process. Set SERVE_WEB=true (the Render blueprint does); off in dev, where Vite serves it.
   webDist: bool(process.env.SERVE_WEB, false) ? fileURLToPath(new URL('../../../web/dist', import.meta.url)) : null,
   isTest: process.env.VITEST === 'true' || process.env.NODE_ENV === 'test',
+  /** Public URL used for links in emails. */
+  appBaseUrl: (process.env.APP_BASE_URL ?? process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(/\/$/, ''),
+  /**
+   * Optional email delivery. Credentials stay on the backend and are never returned by any endpoint.
+   *   EMAIL_PROVIDER=gmail  → Gmail SMTP with GMAIL_USER + GMAIL_APP_PASSWORD (account with 2-Step Verification),
+   *                           or OAuth2: GMAIL_USER + GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET + GMAIL_REFRESH_TOKEN
+   *   EMAIL_PROVIDER=smtp   → SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS
+   * Unset/incomplete → no email is sent: demo mode shows previews, otherwise emails are marked skipped.
+   */
+  email: {
+    provider: (process.env.EMAIL_PROVIDER ?? 'none').toLowerCase(),
+    from: process.env.EMAIL_FROM ?? '',
+    smtp: {
+      host: process.env.SMTP_HOST ?? '',
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: bool(process.env.SMTP_SECURE, false),
+      user: process.env.SMTP_USER ?? '',
+      pass: process.env.SMTP_PASS ?? '',
+    },
+    gmail: {
+      user: process.env.GMAIL_USER ?? '',
+      appPassword: process.env.GMAIL_APP_PASSWORD ?? '',
+      clientId: process.env.GMAIL_CLIENT_ID ?? '',
+      clientSecret: process.env.GMAIL_CLIENT_SECRET ?? '',
+      refreshToken: process.env.GMAIL_REFRESH_TOKEN ?? '',
+    },
+  },
 };
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {

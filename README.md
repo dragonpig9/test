@@ -3,7 +3,7 @@
 > **Recognise value that gets overlooked.**
 > Turn the skills your community already has into help everyone can access, with clear agreements and shared accountability.
 
-CommonHours is a community service-exchange website for the HacKU fintech hackathon. Members trade tutoring, cooking, translation, design, repairs and more using **time credits** (1 hour = 1 credit, whatever the skill). They find each other through **consented vouches**, agree **terms before work starts**, and resolve disagreements **against those terms** using randomly selected community attestors.
+CommonHours is a community service-exchange website for the HacKU fintech hackathon. Members trade tutoring, cooking, translation, design, repairs and more using **time credits** (1 hour = 1 credit by default; a peer-reviewed skill tier and measured demand can raise the price within published bounds). They find each other through **consented vouches**, agree **terms before work starts**, and resolve disagreements **against those terms** using randomly selected community attestors.
 
 There is no blockchain, no cryptocurrency, no cash conversion and no AI scoring. Every balance, permission, score and decision comes from backend rules (`apps/api/src/config/policy.ts`) and persisted records, and every change is written to an audit trail in the same database transaction.
 
@@ -56,24 +56,29 @@ The **Demo guide** (top bar → "Demo guide", also on the Overview page) tracks 
 
 | # | Act as | Do this | What to point at |
 | --- | --- | --- | --- |
-| 1 | Mei | **Service Board** → Category *Cooking*, tick "reachable only" → *Home-cooked Malaysian dinner* | Reachability: "3 hops · strength 0.49" |
-| 2 | Mei | **Trust Network** → From Mei, To Sam | Path Mei → Alice → Ben → Sam, `0.7 × 1 × 0.7 = 0.49`, backwards-walk note |
-| 3 | Mei | Click **Inspect** on Alice → Mei | Strength, age, status, liability 25% → max 5 points |
-| 4 | Mei → Sam | Request the dinner (2h). On the exchange, **Propose reciprocal exchange**: 1h maths tutoring. Switch to Sam and accept both | Two separate exchanges, linked |
-| 5 | Mei | **Time Credits** | Posted vs reserved vs available (Mei: 0 − 2 = −2, allowed) |
-| 6 | either | **+1d** on the simulated clock, then both confirm both exchanges | Settlement. Net change Mei −1, Sam +1 |
-| 7 | Sam → Mei | Sam requests Mei's *Mandarin ↔ English translation* with **Punctuality is a required condition** ticked. Mei accepts | A new, unsettled exchange |
-| 8 | Sam | **+1d**, then *Open a dispute* → "was late" | Allowed only because punctuality was agreed |
-| 9 | Sam | Dispute page | Credits **frozen**. Eligibility table with exclusion reasons and the recorded seed |
-| 10 | selected attestors | First attestor votes *Unclear* (escalates to a panel of 3); two panel members vote *Confirmed* | Resolution + settlement |
-| 11 | Mei | Time Credits / My Credibility / Activity | Ledger entry, score history 33 → 37 → 41, audit events with rule ids |
-| 12 | Mei | **My Credibility** shows "Invite new members" unlocked (≥ 40) → Trust Network → *My vouches & invitations* → Create invitation | Permission earned from records |
+| 1 | Mei | **Service Board** → Category *Cooking*, tick "reachable only" → *Home-cooked Malaysian dinner* | Reachability "3 hops · strength 0.5776", tier badge *Restricted*, price estimate |
+| 2 | Mei | **Trust Network** → From Mei, To Sam | Strongest path Mei → Alice → Ben → Sam: each pair combines vouch + earned relationship, `0.76 × 1 × 0.76 = 0.5776`; violet dotted lines = earned relationships |
+| 3 | Mei | Click **Inspect** on Alice → Mei | Strength, age, status, liability 25% → max 5 points (earned edges carry no liability) |
+| 4 | Mei | **Service Board** → Alice's *Feed my cat and water plants while I'm away* | **🔒 locked high-trust task**: needs credibility 35, Mei has 33; *How to unlock* shows every check, the owner-approval condition and how to become eligible |
+| 5 | Mei → Sam | Request the dinner (2h). On the exchange, **Propose reciprocal exchange**: 1h maths tutoring. Switch to Sam and accept both | Two separate exchanges, each with a price breakdown and eligibility card |
+| 6 | Mei | **Time Credits** | Posted vs reserved vs available (Mei: 0 − 2 = −2, allowed) |
+| 7 | either | **+1d**, then both confirm both exchanges | Settlement. Net change Mei −1, Sam +1 |
+| 8 | Mei | Tutoring exchange → **Earned trust** card; **Service Board**; 🔔 | Mei ↔ Sam: 0 → 0.2 → 0.28 (applied once; confirming again or reloading changes nothing). Credibility 33 → 37, so Alice's task is **unlocked** (owner approval still needed) and a "High trust tasks unlocked" notification appears |
+| 9 | Sam → Mei | Sam requests Mei's *Mandarin ↔ English translation* (1h) with **Punctuality is a required condition** ticked. Mei accepts | **Skilled, high-demand price**: 1 h × 1.50 (Advanced, peer-reviewed by Priya) × 1.20 (3 unique requests ÷ 1 provider) = **1.8 credits**, locked at acceptance |
+| 10 | Sam | **+1d**, then *Open a dispute* → "was late" | Allowed only because punctuality was agreed |
+| 11 | Sam | Dispute page | Credits **frozen** (1.8). Jury table: exclusion reasons, closeness = max(relationship trust to each party), rank, and "Selected because this member meets the reliability requirement and has limited connections to either party." |
+| 12 | selected jurors | First juror votes *Unclear* (escalates to a panel of 3); two panel members vote *Confirmed* | Resolution + settlement |
+| 13 | Mei | Time Credits / My Credibility / Activity | Ledger entry, score history 33 → 37 → 41, audit events with rule ids |
+| 14 | Mei | **My Credibility** shows "Invite new members" unlocked (≥ 40) → Trust Network → *My vouches & invitations* → Create invitation | Permission earned from records |
+| 15 | Mei | **Overview** → 🔔 **Notifications** → **Account** | Home-screen notifications (accepted, settled, trust change, unlocked tasks, dispute, outcome), mark all as read, and the **email outbox** previews (demo mode never sends real email) |
 
 Edge cases to show:
 - **Credit floor:** switch to Ben → My Exchanges → Kofi's 3h washing-machine repair → *Accept*. The backend blocks it because Ben's available balance would go from −3 to −6, below −5.
 - **Insufficient attestors:** Disputes → *All community* → Kofi–Lena kettle dispute. It is in **NEEDS_REVIEW** with frozen credits, a blocker ("only 2 eligible for 3 panel seats") and a next action.
 - **Expiry:** Tomás's three oldest earned credits expired when the demo clock was set. Use **+7d** to watch his next lot expire.
-- **Reset demo** restores the seeded state in about 4 seconds.
+- **High-trust approval:** after step 8, Mei offers to do Alice's cat-sitting. Accepting is blocked until Alice presses **Approve home access**; once both accept, only Mei sees Alice's private address on the exchange.
+- **Pricing edge cases:** Alice's request shows "waiting for a provider" (no offers in *Other*: ×1.00, no division by zero); categories with fewer than 2 unique requests show "insufficient data" (×1.00).
+- **Reset demo** restores the seeded state in about 6 seconds.
 
 ---
 
@@ -108,7 +113,13 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 - **Withdrawal.** Remove listings, cancel, partial completion, revoke vouches, leave the community. Leaving blocks new commitments but keeps accepted exchanges, disputes, debts and history.
 - **Audit.** A domain audit event in the same transaction for every credit, credibility, vouch and exchange change, with actor, action, entity, before/after, reason, rule id + policy version and correlation id. The Activity page shows these.
 - **Demo mode.** Account switcher, simulated clock (+1d / +7d / +30d, which also runs sweeps), reset button and a state-driven guide.
-- **Debug panel** (development builds only). Nine tabs backed by `/api/debug/*`. Errors carry a human message, a stable code, the module and a correlation id. Password hashes and tokens are never returned.
+- **Task eligibility.** Standard (0) / Restricted (25, in a home with the owner present) / High trust (35, entering a home while the owner is absent) tiers on member credibility, plus optional requester-set minimum credibility (raise only) and relationship trust. High trust also needs a verified contact and the owner's explicit per-exchange approval. Enforced before acceptance and before any reservation; locked tasks show required vs current score, conditions and how to unlock.
+- **Explainable pricing.** service credits = hours × skill × demand (+ optional gift), integer hundredths, one half-up rounding. Skill tiers (×1.00 / 1.25 / 1.50 / 2.00) only via peer review; demand = clamp(1 + 0.1 × (unique active requests ÷ eligible providers − 1), 1.0, 1.5) from real listings. Requester budgets; price snapshot locked at acceptance; the −5 floor applies to the full amount.
+- **Earned trust (bug fix).** Exchanges both members confirm create/strengthen a separate earned relationship (0.2, then +0.10 × (1 − old), cap 0.7, at most 2 counted per pair per 30 days, applied exactly once per exchange, no liability). Relationship trust is the **strongest path** (Dijkstra on −log strength), so a new weak edge never lowers it.
+- **Less-connected jury.** Existing filters plus availability, then lowest closeness = max(relationship trust to either party); ties randomised by the recorded seed; snapshot of reasons stored with every selection.
+- **Profiles.** Photo URL, intro, affiliation, neighbourhood, languages, skills and tiers, availability, completed services, credibility breakdown and contact-verification status — self-reported, verified and record-based data shown separately. Email, phone and address private by default.
+- **Notifications.** Persistent in-app notifications (bell, list, home-screen card, mark read) written after commit with dedupe keys; optional email via a persisted outbox with retries and a Gmail/SMTP adapter; per-member opt-in and categories.
+- **Debug panel** (development builds only). Thirteen tabs backed by `/api/debug/*` (incl. task eligibility, pricing, trust updates, jury candidates, notifications & email). Errors carry a human message, a stable code, the module and a correlation id. Password hashes and tokens are never returned.
 
 ### Honest limitations
 
@@ -118,20 +129,38 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 - **Mutual resolution outcomes carry no penalty**, even "refuted", because they are a settlement between the parties rather than a finding.
 - **No reversal workflow for settled exchanges.** Disputes must be opened before settlement.
 - Sweeps (expiry, vote deadlines) run on clock advance or on demand, not on a background schedule.
-- Evidence is text only (no file uploads). There are no notifications or emails.
+- Evidence is text only (no file uploads).
+- **Phone verification is not implemented** (no SMS provider): phones always show "not verified". Profile photos are an https URL, not an upload.
+- In demo mode without email credentials, contact verification codes appear in the on-screen email preview, so those addresses are labelled **demo-verified** (they count for high-trust tasks only in demo mode).
+- Reminders and email retries run on a one-minute server timer; a multi-instance deployment would need a single worker for that timer.
+- A pricing quote is fixed per terms version when saved; if demand changes before both accept, the quote is not refreshed automatically (editing the terms re-quotes).
+- Databases created before this release: run `npx tsx apps/api/scripts/backfill-earned-trust.ts` once to replay earned trust for past confirmed exchanges.
 - The simulated clock is global (one per server), which suits a single-presenter demo, not multi-tenant use.
 - Mobile layouts work, but the graph is best on desktop. A table view is provided for small screens and keyboard users.
 - The production web bundle is about 560 kB (React Flow included). It is not code-split beyond the debug panel.
 
 ---
 
+## Policy defaults (`policy-2026.10-v2`, all in `apps/api/src/config/policy.ts`)
+
+| Area | Default |
+| --- | --- |
+| Task tiers (member credibility, 0–100) | Standard **0** · Restricted **25** (in a home, owner present) · High trust **35** (entering a home, owner absent) + verified contact + explicit owner approval per terms version. Category minimum (Equipment repair 25) still applies. Required = max(tier, category, requester minimum). Requesters may add a relationship-trust minimum (0–1). |
+| Price | base = hours × 100 (hundredths) · service = round½↑(base × skill% × demand% / 10 000) · total = service + gift. One rounding step, integers only. |
+| Skill tiers | Standard ×1.00 · Skilled ×1.25 (1 review) · Advanced ×1.50 (1 review) · Specialist ×2.00 (2 reviews). Reviewers: credibility ≥ 40, not the claimant, no declared conflict; any decline closes the claim. |
+| Demand | Window 45 days. ratio = unique unmatched requesters ÷ active providers with an open offer meeting the category minimum. demand = clamp(1 + 0.10 × (ratio − 1), 1.00, 1.50). < 2 unique requesters → ×1.00 "insufficient data"; 0 providers → ×1.00 "waiting for a provider". Duplicate requests from one person count once; expired (older) requests are excluded. |
+| Earned trust | New relationship 0.2; then old + 0.10 × (1 − old); cap 0.7; ≤ 2 increases per pair per 30 days; decays ×0.5 after 12 idle months, expires after 18. Only exchanges both confirmed in full. |
+| Relationship trust | Strongest path: max Π edge strength (Dijkstra on −log), pair = 1 − (1 − vouch)(1 − earned); ties: fewer hops, then handles. |
+| Jury | Existing filters + available (jury opt-in, < 2 open assignments); rank by closeness = max(relationship trust to each party), rounded to 0.01, lowest first; ties by seeded shuffle. |
+| Notifications | After-commit, deduplicated; email opt-in, verified address only, retries 1 m / 5 m / 30 m / 2 h then FAILED. |
+
 ## The fairness rule
 
-**Rule:** every hour of service earns exactly one credit, whatever the service. The credit floor is −5, and disputes are judged only against terms both members accepted before the work began.
+**Rule:** every hour of service earns one credit by default, whatever the service. Premiums exist only for peer-reviewed skill tiers and measured demand, are capped (at most ×2.00 × 1.50), shown in a breakdown before acceptance, and locked once both accept. The credit floor is −5, and disputes are judged only against terms both members accepted before the work began.
 
 **Who it protects.** People whose skills the market undervalues (cooking, care, translation, gardening) get the same hourly value as tutoring or design. Newcomers with no savings can receive help straight away (down to −5). Providers are protected from moving goalposts, because complaints about things never agreed ("they were late" when punctuality wasn't a condition) are rejected outright.
 
-**Who bears the cost.** Members with scarce, market-priced skills give up price signals. An hour of electrical repair buys the same as an hour of dog walking, so some may choose not to participate. Generous givers bear the expiry cost: Tomás earns but rarely spends, so his oldest credits expire. Vouchers carry bounded reputational liability for people they vouch for. The community also absorbs up to 5 credits of unpaid debt per member who leaves in deficit.
+**Who bears the cost.** Members with scarce, market-priced skills give up most price signals (premiums are capped at ×2.00 for skill and ×1.50 for demand, and need peer review). An hour of electrical repair buys the same as an hour of dog walking, so some may choose not to participate. Generous givers bear the expiry cost: Tomás earns but rarely spends, so his oldest credits expire. Vouchers carry bounded reputational liability for people they vouch for. The community also absorbs up to 5 credits of unpaid debt per member who leaves in deficit.
 
 **Where it can fail.**
 - **Collusion:** two members can confirm fake exchanges to farm credits and credibility. The floor and vouch limits bound the damage but do not prevent it.

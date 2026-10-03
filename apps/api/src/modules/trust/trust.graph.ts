@@ -1,6 +1,15 @@
 /**
  * Pure graph algorithms for the trust network.
  *
+ * Two questions, two algorithms:
+ *  - NAVIGATION / attestor distance: fewest hops over active vouches (BFS, `shortestPathsFrom`,
+ *    `hopDistances`). Unchanged from v1.
+ *  - RELATIONSHIP TRUST (strength): the STRONGEST valid path = maximum product of active edge
+ *    strengths (`strongestPathsFrom`, Dijkstra on −log(strength)). Ties: fewer hops, then the
+ *    alphabetical sequence of handles (stable across resets). Because the maximum is taken over
+ *    all paths, adding a new (even weak) edge can never lower anyone's relationship trust —
+ *    BFS could, by swapping a strong 3-hop path for a weak direct edge.
+ *
  * Vouches are stored as DIRECTED edges voucher -> vouchee. For community discovery we use an
  * UNDIRECTED view of ACTIVE edges: two members are adjacent if either vouched for the other.
  * Walking an edge backwards does NOT mean the invitee endorsed the inviter — it only means the
@@ -53,6 +62,8 @@ export interface BestPath {
   nodes: string[];
   edges: GEdge[];
   handleKey: string[];
+  /** Σ −log(edge strength); lower = stronger. Only set by strongestPathsFrom. */
+  cost?: number;
 }
 
 const EPS = 1e-9;
@@ -85,6 +96,83 @@ export function shortestPathsFrom(g: Graph, source: string): Map<string, BestPat
     frontier = [...next].sort((x, y) => cmp(g.handles.get(x)!, g.handles.get(y)!));
   }
   return best;
+}
+
+/**
+ * Strongest path from `source` to every reachable member (Dijkstra with cost −log w, w ∈ (0, 1]).
+ * The order (cost, hops, handle sequence) is preserved when the same edge is appended to two
+ * paths, so the greedy choice is valid and the result is deterministic.
+ */
+export function strongestPathsFrom(g: Graph, source: string): Map<string, BestPath> {
+  const best = new Map<string, BestPath>();
+  if (!g.adj.has(source)) return best;
+  best.set(source, { hops: 0, strength: 1, cost: 0, nodes: [source], edges: [], handleKey: [g.handles.get(source)!] });
+  const done = new Set<string>();
+  for (;;) {
+    let u: string | undefined;
+    let bu: BestPath | undefined;
+    for (const [id, p] of best) if (!done.has(id) && (!bu || stronger(p, bu))) [u, bu] = [id, p];
+    if (!u || !bu) break;
+    done.add(u);
+    for (const { to, edge } of g.adj.get(u)!) {
+      if (done.has(to) || edge.w <= 0) continue;
+      const w = Math.min(edge.w, 1);
+      const cand: BestPath = {
+        hops: bu.hops + 1,
+        strength: bu.strength * w,
+        cost: bu.cost! - Math.log(w),
+        nodes: [...bu.nodes, to],
+        edges: [...bu.edges, edge],
+        handleKey: [...bu.handleKey, g.handles.get(to)!],
+      };
+      const existing = best.get(to);
+      if (!existing || stronger(cand, existing)) best.set(to, cand);
+    }
+  }
+  return best;
+}
+
+function stronger(a: BestPath, b: BestPath): boolean {
+  if (a.cost! < b.cost! - EPS) return true;
+  if (a.cost! > b.cost! + EPS) return false;
+  if (a.hops !== b.hops) return a.hops < b.hops;
+  return cmpArr(a.handleKey, b.handleKey) < 0;
+}
+
+/**
+ * Combines the vouch and the earned relationship between the same two members into one pair
+ * strength: 1 − (1 − vouch)(1 − earned). Bounded by 1, never below either input, and equal to
+ * the vouch strength when nothing was earned (so vouch-only paths keep their v1 values).
+ */
+export function combinePair(vouch: number, earned: number): number {
+  return 1 - (1 - Math.max(0, vouch)) * (1 - Math.max(0, earned));
+}
+
+export interface PairParts {
+  vouch: GEdge | null;
+  earned: GEdge | null;
+}
+
+/** Relationship graph: one combined edge per pair (id "pair:<a>|<b>") built from both edge kinds. */
+export function buildRelationshipGraph(members: { id: string; handle: string }[], vouchEdges: GEdge[], earnedEdges: GEdge[]) {
+  const ids = new Set(members.map((m) => m.id));
+  const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const parts = new Map<string, PairParts>();
+  const consider = (e: GEdge, kind: 'vouch' | 'earned') => {
+    if (e.w <= 0 || e.a === e.b || !ids.has(e.a) || !ids.has(e.b)) return;
+    const k = key(e.a, e.b);
+    const p = parts.get(k) ?? { vouch: null, earned: null };
+    const cur = p[kind];
+    if (!cur || e.w > cur.w || (e.w === cur.w && e.id < cur.id)) p[kind] = e;
+    parts.set(k, p);
+  };
+  for (const e of vouchEdges) consider(e, 'vouch');
+  for (const e of earnedEdges) consider(e, 'earned');
+  const combined: GEdge[] = [...parts.entries()].map(([k, p]) => {
+    const [a, b] = k.split('|');
+    return { id: `pair:${k}`, a, b, w: combinePair(p.vouch?.w ?? 0, p.earned?.w ?? 0) };
+  });
+  return { graph: buildGraph(members, combined), parts };
 }
 
 function better(a: BestPath, b: BestPath): boolean {

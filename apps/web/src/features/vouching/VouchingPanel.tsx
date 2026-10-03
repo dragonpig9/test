@@ -5,6 +5,8 @@ import { MemberChip } from '../../components/MemberChip';
 import { useAuth } from '../../lib/auth';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
+import { ProfileCard } from '../profiles/ProfileCard';
+import { useProfile } from '../profiles/api';
 import { TermsChooser } from './TermsChooser';
 import { amendVouch, createInvitation, proposeVouch, respondAmendment, respondVouch, revokeInvitation, revokeVouch, useInvitations, useMyVouches, type MyVouch } from './api';
 
@@ -58,9 +60,9 @@ export function VouchingPanel({ graph }: { graph?: GraphView }) {
               return (
                 <li key={v.id} className="py-3">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <MemberChip m={v.voucher} />
+                    <MemberChip m={v.voucher} detail />
                     <span className="text-slate-400">→</span>
-                    <MemberChip m={v.vouchee} />
+                    <MemberChip m={v.vouchee} detail />
                     <StatusChip status={v.status} />
                     <span className="text-xs text-slate-500">
                       {v.direction} · strength {v.decayed ? `${v.strength}→${v.effectiveStrength}` : v.effectiveStrength} · liability {v.liabilityPct}% (max −{v.maxPenaltyPoints}) · {v.origin.toLowerCase()} · expires {fmtDate(v.expiresAt, false)}
@@ -206,6 +208,7 @@ function ProposeVouchModal({ open, onClose, graph }: { open: boolean; onClose: (
               ))}
           </select>
         </Field>
+        {who && <WhoCard id={who} />}
         <TermsChooser strength={s} liability={l} onChange={(a, b) => { setS(a); setL(b); }} ack={ack} onAck={setAck} />
         <ErrorBox error={create.error} />
         <Button type="submit" disabled={!ack || !who} busy={create.isPending}>
@@ -234,5 +237,16 @@ function AmendModal({ vouch, onClose }: { vouch: MyVouch; onClose: () => void })
         </Button>
       </form>
     </Modal>
+  );
+}
+
+/** Who you are about to vouch for: their profile (self-reported vs verified vs records). */
+function WhoCard({ id }: { id: string }) {
+  const q = useProfile(id);
+  if (!q.data) return <Loading />;
+  return (
+    <div className="rounded-xl border border-slate-200 p-3">
+      <ProfileCard p={q.data.profile} compact />
+    </div>
   );
 }

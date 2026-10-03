@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
+import { NotificationSettings } from '../notifications/NotificationSettings';
 
 interface Preview {
   willClose: string[];
@@ -20,7 +21,10 @@ export function AccountPage() {
   if (!me) return null;
   return (
     <div>
-      <PageHeader title="Account & leaving" subtitle="Leaving blocks new commitments but keeps everything you already agreed to, your debts and your history." />
+      <PageHeader title="Account & leaving" subtitle="Notification settings, your email outbox, and leaving. Leaving blocks new commitments but keeps everything you already agreed to, your debts and your history." />
+      <div className="mb-6">
+        <NotificationSettings />
+      </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Your account">
           <p className="text-sm">

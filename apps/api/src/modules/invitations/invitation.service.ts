@@ -10,6 +10,7 @@ import { recordAudit } from '../audit/audit.service';
 import { assertThreshold } from '../credibility/credibility.service';
 import { ensureMemberAccount } from '../ledger/ledger.repo';
 import { assertCanCommit, toSummary } from '../members/member.repo';
+import { notify } from '../notifications/notification.events';
 import { maxPenaltyPoints, vouchTermsText } from '../vouches/vouch.rules';
 import { createVouchFromInvitation } from '../vouches/vouch.service';
 
@@ -148,6 +149,18 @@ export async function joinWithInvitation(tx: Tx, ctx: Ctx, input: JoinInput, opt
     summary: `${member.displayName} joined, invited by ${inv.inviter.displayName}`,
   });
   await createVouchFromInvitation(tx, memberCtx, inv, member.id);
+  notify({
+    memberId: inv.inviterId,
+    kind: 'invitation.accepted',
+    category: 'invitations',
+    title: `${member.displayName} joined with your invitation`,
+    body: `Your vouch (strength ${inv.strength}, liability ${inv.liabilityPct}%) is now active.`,
+    link: '/trust?tab=vouches',
+    entityType: 'MEMBER',
+    entityId: member.id,
+    dedupeKey: `invitation.accepted:${inv.id}`,
+    at: ctx.now,
+  });
   return member;
 }
 

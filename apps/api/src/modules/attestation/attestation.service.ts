@@ -14,15 +14,27 @@ import { getExchange } from '../exchanges/exchange.repo';
 import { isDue, roleOf } from '../exchanges/exchange.rules';
 import { markDisputed, releaseAfterAttestation, settleAfterAttestation } from '../exchanges/exchange.service';
 import { getMember } from '../members/member.repo';
-import { hopsFrom, loadTrust } from '../trust/trust.service';
+import { notify, type NotificationIntent } from '../notifications/notification.events';
+import { hopsFrom, loadTrust, relationshipTrustFrom } from '../trust/trust.service';
 import { maxPenaltyPoints } from '../vouches/vouch.rules';
-import { evaluateEligibility, selectAttestors, type Candidate, type EligibilityRow } from './attestation.eligibility';
+import { annotateSelection, evaluateEligibility, rankCandidates, type Candidate, type EligibilityRow } from './attestation.eligibility';
 import { disputeMachine } from './attestation.state';
 
 const MODULE = 'attestation';
 
 export const INDEPENDENCE_NOTE =
-  'Attestors are at least two active hops from both parties, have no direct vouch/invite relation with them, and have declared no conflict. Graph distance alone does not guarantee independence — people can know each other outside the network — so attestors can recuse themselves and anyone can declare a conflict.';
+  'Jurors must meet the attestor credibility threshold, be available, be at least two active hops from both parties, have no direct vouch/invite relation with them and no declared conflict. Among those, the members LEAST connected to either party are preferred: closeness = max(relationship trust to each party), lowest first; equal values are ordered by the recorded seed. A low credibility score is never a reason to be picked. Graph distance alone does not guarantee independence — people can know each other outside the network — so jurors can recuse themselves and anyone can declare a conflict.';
+
+const SELECTION_METHOD = 'lowest-closeness-v2';
+
+/** Notifies both parties of a dispute (dedupe per event). */
+function tellParties(ctx: Ctx, d: { id: string }, parties: { id: string }[], kind: string, title: string, body: string, dedupe: string) {
+  notify(
+    parties.map(
+      (p): NotificationIntent => ({ memberId: p.id, kind, category: 'disputes', title, body, link: `/disputes/${d.id}`, entityType: 'DISPUTE', entityId: d.id, dedupeKey: `${kind}:${d.id}:${dedupe}:${p.id}`, at: ctx.now }),
+    ),
+  );
+}
 
 async function setStatus(tx: Tx, ctx: Ctx, d: Dispute, to: DisputeStatus, data: Prisma.DisputeUpdateInput, audit: { action: string; reason: string; ruleId: string; summary: string }) {
   if (d.status !== to) assertTransition(disputeMachine, d.status, to, audit.action.replace('dispute.', '').replace(/_/g, ' '));
@@ -90,6 +102,10 @@ export async function openDispute(tx: Tx, ctx: Ctx, memberId: string, input: Ope
     summary: `${memberId === ex.providerId ? ex.provider.displayName : ex.recipient.displayName} opened a dispute (${input.condition.toLowerCase()})`,
   });
   await markDisputed(tx, ctx, ex.id, `Dispute ${d.id} opened; credits frozen until a final outcome.`);
+  const other = memberId === ex.providerId ? ex.recipient : ex.provider;
+  const opener = memberId === ex.providerId ? ex.provider : ex.recipient;
+  // No evidence or claim text in the notification: those stay inside the dispute page.
+  tellParties(ctx, d, [other], 'dispute.opened', `${opener.displayName} opened a dispute about “${ex.deliverable}”`, `Condition disputed: ${input.condition.toLowerCase().replace('_', ' ')}. Credits are frozen until a final outcome. You can add your statement on the dispute page.`, 'opened');
   return runSelection(tx, ctx, d, 1);
 }
 
@@ -124,13 +140,31 @@ export async function computeEligibility(db: Db, disputeId: string, now: Date) {
     if (nameOf.has(c.otherMemberId)) push(conf, c.memberId, nameOf.get(c.otherMemberId)!);
     if (nameOf.has(c.memberId)) push(conf, c.otherMemberId, nameOf.get(c.memberId)!);
   }
+  // Availability: open (unvoted) assignments on other disputes.
+  const open = await db.attestorAssignment.groupBy({ by: ['attestorId'], where: { status: 'ASSIGNED', disputeId: { not: disputeId } }, _count: { _all: true } });
+  const openBy = new Map(open.map((o) => [o.attestorId, o._count._all]));
   const candidates: Candidate[] = [];
   for (const m of trust.members) {
-    candidates.push({ id: m.id, handle: m.handle, displayName: m.displayName, status: m.status, score: await scoreOf(db, m.id, now) });
+    candidates.push({
+      id: m.id,
+      handle: m.handle,
+      displayName: m.displayName,
+      status: m.status,
+      score: await scoreOf(db, m.id, now),
+      juryAvailable: m.juryAvailable,
+      openAssignments: openBy.get(m.id) ?? 0,
+    });
   }
-  const ctx = { parties, distances, directRelations: direct, conflicts: conf, alreadySelected: new Set(d.assignments.map((a) => a.attestorId)) };
-  const rows = candidates.map((c) => evaluateEligibility(c, ctx));
-  return { dispute: d, candidates, rows };
+  // Closeness uses the same relationship trust (strongest path) as task eligibility.
+  const relTrust = new Map(parties.map((p) => [p.id, relationshipTrustFrom(trust, p.id)]));
+  const ctx = { parties, distances, directRelations: direct, conflicts: conf, alreadySelected: new Set(d.assignments.map((a) => a.attestorId)), relTrust };
+  const evaluated = candidates.map((c) => evaluateEligibility(c, ctx));
+  const closeness = new Map(evaluated.map((r) => [r.memberId, r.closeness?.value ?? 0]));
+  const eligible = candidates.filter((c) => evaluated.find((r) => r.memberId === c.id)!.eligible);
+  const rank = (seed: string) => rankCandidates(eligible, (c) => closeness.get(c.id) ?? 0, seed);
+  const partyNames = Object.fromEntries(parties.map((p) => [p.id, p.name]));
+  const annotate = (ranked: Candidate[], selected: Set<string>) => annotateSelection(evaluated, ranked, selected, partyNames);
+  return { dispute: d, candidates, rows: evaluated, eligible, rank, annotate };
 }
 
 function selectionSeed(d: { exchange: { scheduledAt: Date; provider: { handle: string }; recipient: { handle: string } } }, round: number) {
@@ -144,19 +178,22 @@ function selectionSeed(d: { exchange: { scheduledAt: Date; provider: { handle: s
  * Too few eligible candidates → NEEDS_REVIEW with the blocker and next action; credits stay frozen.
  */
 async function runSelection(tx: Tx, ctx: Ctx, d0: Dispute, stage: 1 | 2, replacementFor?: number) {
-  const { dispute, candidates, rows } = await computeEligibility(tx, d0.id, ctx.now);
+  const { dispute, eligible, rank, annotate } = await computeEligibility(tx, d0.id, ctx.now);
   const round = replacementFor ?? (await tx.attestorSelection.count({ where: { disputeId: d0.id } })) + 1;
   const required = replacementFor ? 1 : stage === 1 ? POLICY.attestation.singleAttestors : POLICY.attestation.panelSize;
-  const eligible = candidates.filter((c) => rows.find((r) => r.memberId === c.id)!.eligible);
   const seed = selectionSeed(dispute, replacementFor ? round * 100 + dispute.assignments.length : round);
   const sufficient = eligible.length >= required;
-  const selected = sufficient ? selectAttestors(eligible, required, seed) : [];
+  const ranked = rank(seed);
+  const selected = sufficient ? ranked.slice(0, required) : [];
+  // Snapshot: every candidate's eligibility, closeness, rank and the reason they were (not) selected.
+  const rows = annotate(ranked, new Set(selected.map((s) => s.id)));
   const sel = await tx.attestorSelection.create({
     data: {
       disputeId: d0.id,
       round,
       stage,
       seed,
+      method: SELECTION_METHOD,
       candidates: JSON.parse(JSON.stringify(rows)),
       selectedIds: selected.map((s) => s.id),
       requiredCount: required,
@@ -164,13 +201,22 @@ async function runSelection(tx: Tx, ctx: Ctx, d0: Dispute, stage: 1 | 2, replace
       createdAt: ctx.now,
     },
   });
+  const closenessOf = (id: string) => rows.find((r) => r.memberId === id)?.closeness?.value ?? null;
   await recordAudit(tx, ctx, {
     module: MODULE,
     action: 'dispute.attestors_selected',
     entityType: 'DISPUTE',
     entityId: d0.id,
-    after: { selectionId: sel.id, round, stage, seed, eligible: eligible.map((e) => e.handle), selected: selected.map((s) => s.handle) },
-    reason: `${eligible.length} eligible candidate(s), ${required} required. Seeded random draw (seed recorded).`,
+    after: {
+      selectionId: sel.id,
+      round,
+      stage,
+      seed,
+      method: SELECTION_METHOD,
+      eligible: ranked.map((e) => ({ handle: e.handle, closeness: closenessOf(e.id) })),
+      selected: selected.map((s) => ({ handle: s.handle, closeness: closenessOf(s.id) })),
+    },
+    reason: `${eligible.length} eligible candidate(s), ${required} required. Ranked by closeness = max(relationship trust to each party), lowest first; ties ordered by the recorded seed.`,
     ruleId: RULES.DISPUTE_SELECT,
     summary: sufficient
       ? `Selected ${selected.map((s) => s.displayName).join(', ')} as ${stage === 1 ? 'attestor' : 'panel'} (round ${round})`
@@ -186,16 +232,34 @@ async function runSelection(tx: Tx, ctx: Ctx, d0: Dispute, stage: 1 | 2, replace
       voteDeadline: null,
     }, {
       action: 'dispute.needs_review',
-      reason: 'Insufficient eligible attestors; never silently choosing a winner.',
+      reason: 'Insufficient eligible attestors; never silently choosing a winner or waiving conflict rules.',
       ruleId: RULES.DISPUTE_REVIEW,
       summary: 'Dispute needs review: insufficient eligible attestors',
+    }).then((u) => {
+      tellParties(ctx, u, [dispute.exchange.provider, dispute.exchange.recipient], 'dispute.needs_review', `Dispute about “${dispute.exchange.deliverable}” needs review`, `Not enough eligible jurors (${eligible.length} of ${required}). Credits stay frozen; you can retry selection later or agree a resolution together.`, `sel-${sel.id}`);
+      return u;
     });
   }
+  const deadline = addDays(ctx.now, POLICY.attestation.voteWindowDays);
   for (const s of selected) {
     await tx.attestorAssignment.create({ data: { disputeId: d0.id, round, stage, attestorId: s.id, createdAt: ctx.now } });
   }
+  notify(
+    selected.map((s) => ({
+      memberId: s.id,
+      kind: 'jury.assigned',
+      category: 'jury' as const,
+      title: `You were selected as a juror (${stage === 1 ? 'single attestor' : 'panel of three'})`,
+      body: `Vote by ${deadline.toISOString().slice(0, 16).replace('T', ' ')} UTC on one question: did the pre-agreed activity happen as agreed? You can recuse yourself if you have a conflict.`,
+      link: `/disputes/${d0.id}`,
+      entityType: 'DISPUTE',
+      entityId: d0.id,
+      dedupeKey: `jury.assigned:${d0.id}:${round}:${s.id}`,
+      at: ctx.now,
+    })),
+  );
   const target: DisputeStatus = stage === 1 ? 'AWAITING_ATTESTATION' : 'PANEL_REVIEW';
-  return setStatus(tx, ctx, fresh, target, { stage, reviewReason: null, nextAction: null, voteDeadline: addDays(ctx.now, POLICY.attestation.voteWindowDays) }, {
+  return setStatus(tx, ctx, fresh, target, { stage, reviewReason: null, nextAction: null, voteDeadline: deadline }, {
     action: stage === 1 ? 'dispute.awaiting_attestation' : 'dispute.panel_review',
     reason: stage === 1 ? 'One attestor will check whether the agreed activity happened.' : 'Escalated to a panel of three; a majority of two decides.',
     ruleId: RULES.DISPUTE_SELECT,
@@ -269,6 +333,10 @@ export async function castVote(tx: Tx, ctx: Ctx, disputeId: string, memberId: st
       reason: 'Panel did not reach a majority.',
       ruleId: RULES.DISPUTE_REVIEW,
       summary: 'Dispute needs review: panel unresolved',
+    }).then(async (u) => {
+      const ex = await getExchange(tx, d.exchangeId);
+      tellParties(ctx, u, [ex.provider, ex.recipient], 'dispute.needs_review', `Dispute about “${ex.deliverable}” needs review`, 'The panel did not reach a majority. Credits stay frozen; retry with a fresh panel or agree a resolution together.', `panel-${a.round}`);
+      return u;
     });
   }
   return tx.dispute.findUniqueOrThrow({ where: { id: d.id } });
@@ -315,6 +383,15 @@ async function resolve(tx: Tx, ctx: Ctx, d: Dispute, outcome: DisputeOutcome, so
     }
   }
   await refreshCredibility(tx, ctx, touched, `dispute resolved: ${outcome.toLowerCase()}`);
+  tellParties(
+    ctx,
+    d,
+    [ex.provider, ex.recipient],
+    'dispute.outcome',
+    `Dispute resolved: ${outcome === 'CONFIRMED' ? 'the agreed activity happened' : 'the agreed activity did not happen'}`,
+    `“${ex.deliverable}” — decided by ${source}. ${outcome === 'CONFIRMED' ? 'The frozen credits were paid to the provider.' : 'The reservation was released without payment.'}`,
+    'resolved',
+  );
   return u;
 }
 
@@ -385,6 +462,8 @@ export async function sweepVoteDeadlines(tx: Tx, ctx: Ctx) {
       summary: 'Dispute needs review: no quorum before deadline',
     });
     if (missed.length) await refreshCredibility(tx, ctx, missed.map((m) => m.attestorId), 'attestation vote missed');
+    const ex = await getExchange(tx, d.exchangeId);
+    tellParties(ctx, d, [ex.provider, ex.recipient], 'dispute.needs_review', `Dispute about “${ex.deliverable}” needs review`, 'The voting deadline passed without a decision. Credits stay frozen; retry selection or agree a resolution together.', `deadline-${d.voteDeadline?.toISOString()}`);
   }
   return due.length;
 }

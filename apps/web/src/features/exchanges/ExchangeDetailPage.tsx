@@ -7,11 +7,15 @@ import { Timeline } from '../../components/Timeline';
 import { credits, duration, fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
 import { OpenDisputeForm } from '../disputes/OpenDisputeForm';
-import { acceptExchange, acceptPartial, cancelExchange, confirmExchange, declineExchange, proposePartial, useExchange } from './api';
+import { PriceBreakdown } from '../pricing/PriceBreakdown';
+import { EligibilityPanel, TierBadge } from '../task-eligibility/EligibilityPanel';
+import { TrustUpdateCard } from '../trust-graph/TrustUpdateCard';
+import { acceptExchange, acceptPartial, approveHomeAccess, cancelExchange, confirmExchange, declineExchange, proposePartial, useExchange } from './api';
 import { TermsForm } from './TermsForm';
 
 const LABEL: Record<string, string> = {
   accept: 'Accept these terms',
+  approveHomeAccess: 'Approve home access',
   decline: 'Decline',
   withdraw: 'Withdraw proposal',
   editTerms: 'Change terms',
@@ -34,6 +38,13 @@ export function ExchangeDetailPage() {
     if (key === 'decline' || key === 'withdraw') return declineExchange(e.id);
     if (key === 'confirm') return confirmExchange(e.id);
     if (key === 'acceptPartial') return acceptPartial(e.id);
+    if (key === 'approveHomeAccess') {
+      const ok = window.confirm(
+        `Grant ${e.provider.displayName} permission to enter your home while you are away, for this exchange (terms version ${e.termsVersion}) only?\n\nTheir eligibility does not grant this automatically. Changing the terms will require a new approval.`,
+      );
+      if (!ok) throw Object.assign(new Error('Home access was not approved.'), { code: 'VALIDATION_FAILED', module: 'web' });
+      return approveHomeAccess(e.id, e.termsVersion);
+    }
     if (key === 'cancel') {
       const reason = window.prompt('Reason for cancelling (shared with the other member):');
       if (!reason || reason.length < 3) throw Object.assign(new Error('Cancellation needs a reason of at least 3 characters.'), { code: 'VALIDATION_FAILED', module: 'web' });
@@ -44,7 +55,7 @@ export function ExchangeDetailPage() {
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} title="Could not load this exchange" />;
   if (!q.data) return null;
-  const { exchange: e, trustPath, timeline, liabilitySnapshot } = q.data;
+  const { exchange: e, trustPath, timeline, liabilitySnapshot, eligibility, trustUpdate, homeAddress } = q.data;
   const counterpart = e.myRole === 'provider' ? e.recipient : e.provider;
   const r = e.reservation;
   return (
@@ -56,7 +67,7 @@ export function ExchangeDetailPage() {
         title={e.deliverable}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            <StatusChip status={e.status} /> {e.category} · terms version {e.termsVersion} · you are the <strong>{e.myRole}</strong>
+            <StatusChip status={e.status} /> <TierBadge tier={e.trustTier} /> {e.category} · terms version {e.termsVersion} · you are the <strong>{e.myRole}</strong>
           </span>
         }
       />
@@ -134,8 +145,12 @@ export function ExchangeDetailPage() {
                 ['Scheduled', fmtDate(e.scheduledAt)],
                 ['Location', e.location || '—'],
                 ['Punctuality', e.punctualityRequired ? 'Required condition (lateness can be disputed)' : 'Not a condition (lateness alone cannot be disputed)'],
-                ['Standard credits', `${credits(e.creditAmount)} (1 hour = 1 credit)`],
+                ['Service credits', `${credits(e.creditAmount)} (${e.pricing?.legacy ? '1 hour = 1 credit' : 'hours × skill × demand — see Price'})`],
                 ['Gift bonus', e.giftBonus ? `${credits(e.giftBonus)} — voluntary, from ${e.recipient.displayName}` : 'None'],
+                ['Access level', `${e.trustTier.replace('_', ' ').toLowerCase()}${e.homeAccess.required ? ` · home access ${e.homeAccess.approved ? `approved ${fmtDate(e.homeAccess.approvedAt)}` : 'not yet approved by the owner'}` : ''}`],
+                ...(e.minCredibility !== null || e.minRelationshipTrust !== null || e.maxCreditBudget !== null
+                  ? ([['Requester’s requirements', [e.minCredibility !== null && `credibility ≥ ${e.minCredibility}`, e.minRelationshipTrust !== null && `relationship trust ≥ ${e.minRelationshipTrust}`, e.maxCreditBudget !== null && `budget ≤ ${credits(e.maxCreditBudget)} credits`].filter(Boolean).join(' · ')]] as [string, string][])
+                  : []),
                 ['Cancellation', `Free until ${e.cancellationNoticeHours}h before; later only by mutual agreement. ${e.cancellationTerms}`],
                 ['Confirm completion by', fmtDate(e.confirmationDeadline)],
                 ['Acceptance', `${e.provider.displayName}: ${e.providerAcceptedAt ? fmtDate(e.providerAcceptedAt) : 'not yet'} · ${e.recipient.displayName}: ${e.recipientAcceptedAt ? fmtDate(e.recipientAcceptedAt) : 'not yet'}`],
@@ -144,11 +159,34 @@ export function ExchangeDetailPage() {
             />
             <p className="mt-3 text-xs text-slate-500">After both accept, the terms and price are locked. No surprise changes.</p>
           </Card>
+          {e.pricing && (
+            <Card title={e.priceLocked ? 'Price (locked at acceptance)' : 'Price breakdown (quote for this terms version)'}>
+              <PriceBreakdown price={e.pricing} />
+            </Card>
+          )}
+          {eligibility && (
+            <Card title={e.status === 'PROPOSED' ? 'Task eligibility' : 'Task eligibility (recorded at acceptance)'}>
+              <EligibilityPanel e={eligibility} perspective={e.myRole === 'provider' ? 'provider' : 'owner'} />
+            </Card>
+          )}
+          {trustUpdate && <TrustUpdateCard u={trustUpdate} />}
           <Card title="Progress timeline">
             <Timeline entries={timeline} />
           </Card>
         </div>
         <div className="space-y-6">
+          {homeAddress && (
+            <Card title="Home address (private)">
+              <p className="text-sm font-medium">{homeAddress}</p>
+              <p className="mt-1 text-xs text-slate-500">Shown only to you, the provider of this accepted in-home exchange. It disappears once the exchange is closed and is never sent by email.</p>
+            </Card>
+          )}
+          <Card title={e.myRole === 'provider' ? 'Recipient' : e.myRole === 'recipient' ? 'Provider' : 'Members'}>
+            <MemberChip m={counterpart} detail />
+            <Link to={`/profile/${counterpart.id}`} className="mt-2 block text-sm font-medium text-brand-700 hover:underline">
+              View profile →
+            </Link>
+          </Card>
           <Card title="Credit reservation">
             {r ? (
               <div className="space-y-2 text-sm">
@@ -203,6 +241,7 @@ export function ExchangeDetailPage() {
         <TermsForm
           mode="edit"
           exchangeId={e.id}
+          providerId={e.provider.id}
           myRole={e.myRole === 'provider' ? 'provider' : 'recipient'}
           counterpartyName={counterpart.displayName}
           init={{ ...e, category: e.category as ServiceCategory, confirmationDays: 3 }}
@@ -216,6 +255,7 @@ export function ExchangeDetailPage() {
           counterpartyId={counterpart.id}
           counterpartyName={counterpart.displayName}
           linkedExchangeId={e.id}
+          providerId={e.myRole === 'provider' ? counterpart.id : e.myRole === 'recipient' ? e.recipient.id : undefined}
           init={{ deliverable: '', category: 'Tutoring', durationMinutes: 60, location: '', punctualityRequired: false, giftBonus: 0, cancellationNoticeHours: 1, cancellationTerms: '', confirmationDays: 3 }}
           onDone={(nid) => {
             setModal(null);

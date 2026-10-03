@@ -16,6 +16,8 @@ import { DisputesPage } from './features/disputes/DisputesPage';
 import { DisputeDetailPage } from './features/disputes/DisputeDetailPage';
 import { ActivityPage } from './features/audit/ActivityPage';
 import { AccountPage } from './features/withdrawal/AccountPage';
+import { NotificationsPage } from './features/notifications/NotificationsPage';
+import { ProfilePage } from './features/profiles/ProfilePage';
 
 // The debug panel is development-only and loaded lazily so it never ships in production bundles' main chunk.
 const DebugPanel = lazy(() => import('./features/debug/DebugPanel'));
@@ -47,6 +49,9 @@ export function App() {
         <Route path="/disputes/:id" element={<DisputeDetailPage />} />
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/account" element={<AccountPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/profile/:id" element={<ProfilePage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/join" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

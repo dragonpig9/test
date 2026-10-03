@@ -46,6 +46,14 @@ export const amendVouchSchema = z.object({
 
 export const revokeSchema = z.object({ reason: z.string().min(3).max(500) });
 
+const trustTierSchema = z.enum(['STANDARD', 'RESTRICTED', 'HIGH_TRUST']);
+const requirementFields = {
+  trustTier: trustTierSchema.optional(),
+  minCredibility: z.number().int().min(0).max(100).nullable().optional(),
+  minRelationshipTrust: z.number().min(0).max(1).nullable().optional(),
+  maxCreditBudget: z.number().int().min(1).max(5000).nullable().optional(),
+};
+
 export const createListingSchema = z.object({
   type: z.enum(['OFFER', 'REQUEST']),
   title: z.string().min(3).max(100),
@@ -56,6 +64,7 @@ export const createListingSchema = z.object({
   location: z.string().max(120).default(''),
   availability: z.string().min(2).max(200),
   requiredSkills: z.array(z.string().min(1).max(40)).max(10).default([]),
+  ...requirementFields,
 });
 
 export const exchangeTermsSchema = z.object({
@@ -68,6 +77,7 @@ export const exchangeTermsSchema = z.object({
   cancellationNoticeHours: z.number().int().min(0).max(24 * 14),
   cancellationTerms: z.string().max(500).default(''),
   confirmationDays: z.number().int().min(1).max(14).default(3),
+  ...requirementFields,
 });
 
 export const proposeExchangeSchema = exchangeTermsSchema.extend({
@@ -113,6 +123,47 @@ export const leaveSchema = z.object({
   reason: z.string().max(500).default(''),
 });
 
+export const homeAccessSchema = z.object({
+  termsVersion: z.number().int().min(1),
+  acknowledge: z.literal(true, { errorMap: () => ({ message: 'Confirm that you grant home access for this exchange' }) }),
+});
+
+export const skillClaimSchema = z.object({
+  category: z.enum(SERVICE_CATEGORIES),
+  tier: z.enum(['SKILLED', 'ADVANCED', 'SPECIALIST']),
+  evidence: z.string().min(10, 'Describe your experience or qualification (at least 10 characters)').max(1000),
+});
+
+export const skillReviewSchema = z.object({
+  approve: z.boolean(),
+  note: z.string().min(5).max(500),
+});
+
+const optionalText = (max: number) => z.string().trim().max(max);
+export const profileUpdateSchema = z.object({
+  displayName: z.string().trim().min(2).max(60),
+  photoUrl: z.union([z.string().trim().url().max(500).refine((u) => u.startsWith('https://'), 'Photo URL must start with https://'), z.literal('')]).optional(),
+  intro: optionalText(500),
+  affiliation: optionalText(120),
+  neighborhood: optionalText(80),
+  languages: z.array(z.string().trim().min(1).max(40)).max(10),
+  skills: z.array(z.string().trim().min(1).max(40)).max(15),
+  availability: optionalText(200),
+  contactEmail: z.union([z.string().trim().email().max(200), z.literal('')]).optional(),
+  phone: z.union([z.string().trim().regex(/^\+?[0-9 ()-]{6,20}$/, 'Use digits, spaces, +, ( ) or -'), z.literal('')]).optional(),
+  homeAddress: optionalText(300).optional(),
+  shareContactWithPartners: z.boolean(),
+  juryAvailable: z.boolean(),
+});
+
+export const verifyEmailSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code') });
+
+export const NOTIFICATION_CATEGORIES = ['invitations', 'exchanges', 'reminders', 'credits', 'trust', 'disputes', 'jury'] as const;
+export const notificationPrefsSchema = z.object({
+  emailEnabled: z.boolean(),
+  categories: z.array(z.enum(NOTIFICATION_CATEGORIES)).max(NOTIFICATION_CATEGORIES.length),
+});
+
 export const advanceClockSchema = z.object({ days: z.number().int().min(1).max(800) });
 export const switchAccountSchema = z.object({ handle: z.string().min(1) });
 
@@ -127,3 +178,5 @@ export type ProposeExchangeInput = z.infer<typeof proposeExchangeSchema>;
 export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
 export type EvidenceInput = z.infer<typeof evidenceSchema>;
 export type VoteInput = z.infer<typeof voteSchema>;
+export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
+export type SkillClaimInput = z.infer<typeof skillClaimSchema>;

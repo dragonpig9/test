@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { makeCtx, type Ctx } from '../src/core/context';
 import { addDays } from '../src/core/dates';
 import { prisma, withTx, type Tx } from '../src/core/db';
+import type { ProposeExchangeInput } from '@commonhours/shared';
 import { acceptExchange, confirmCompletion, proposeExchange } from '../src/modules/exchanges/exchange.service';
 import { joinWithInvitation } from '../src/modules/invitations/invitation.service';
 import { ensureMemberAccount } from '../src/modules/ledger/ledger.repo';
@@ -44,24 +45,30 @@ export async function community(handles: string[], edges?: [string, string, numb
   return ids;
 }
 
-/** Proposes (by recipient) and accepts (by provider) an exchange scheduled at `at`. */
-export async function agreed(providerId: string, recipientId: string, minutes: number, at: Date, extra: Partial<{ punctualityRequired: boolean; giftBonus: number; category: 'Cooking' | 'Tutoring' | 'Translation' }> = {}) {
-  const ex = await run(recipientId, addDays(at, -2), (tx, ctx) =>
+/** Proposes an exchange as the recipient (not yet accepted by the provider). */
+export async function proposed(providerId: string, recipientId: string, minutes: number, at: Date, extra: Partial<ProposeExchangeInput> = {}) {
+  return run(recipientId, addDays(at, -2), (tx, ctx) =>
     proposeExchange(tx, ctx, recipientId, {
       counterpartyId: providerId,
       myRole: 'recipient',
-      category: extra.category ?? 'Cooking',
+      category: 'Cooking',
       deliverable: `Service of ${minutes} minutes`,
       durationMinutes: minutes,
       scheduledAt: at.toISOString(),
       location: '',
-      punctualityRequired: extra.punctualityRequired ?? false,
-      giftBonus: extra.giftBonus ?? 0,
+      punctualityRequired: false,
+      giftBonus: 0,
       cancellationNoticeHours: 24,
       cancellationTerms: '',
       confirmationDays: 3,
+      ...extra,
     }),
   );
+}
+
+/** Proposes (by recipient) and accepts (by provider) an exchange scheduled at `at`. */
+export async function agreed(providerId: string, recipientId: string, minutes: number, at: Date, extra: Partial<ProposeExchangeInput> = {}) {
+  const ex = await proposed(providerId, recipientId, minutes, at, extra);
   await run(providerId, addDays(at, -1), (tx, ctx) => acceptExchange(tx, ctx, ex.id, providerId, ex.termsVersion));
   return ex;
 }

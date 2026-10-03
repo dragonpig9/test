@@ -12,6 +12,9 @@ import { acceptExchange, confirmCompletion, proposeExchange } from '../exchanges
 import { runCreditExpiry } from '../expiry/expiry.service';
 import { createInvitation, joinWithInvitation } from '../invitations/invitation.service';
 import { ensureMemberAccount } from '../ledger/ledger.repo';
+import { updatePreferences } from '../notifications/notification.service';
+import { createSkillClaim, reviewSkillClaim } from '../pricing/pricing.skills';
+import { confirmEmailVerification, requestEmailVerification } from '../profiles/profile.verification';
 import { createListing } from '../services/listing.service';
 import { expireStaleVouches, proposeVouch, respondToVouch } from '../vouches/vouch.service';
 
@@ -21,15 +24,25 @@ export const DEMO_NOW = new Date('2026-10-01T09:00:00.000Z');
 export const DEMO_PASSWORD = 'commonhours-demo';
 
 export const DEMO_MEMBERS = [
-  { handle: 'alice', name: 'Alice Okafor', bio: 'Bootstrap member. Runs the community allotment.', skills: ['Gardening', 'Tutoring'] },
-  { handle: 'ben', name: 'Ben Carter', bio: 'Cook and occasional mover of heavy things.', skills: ['Cooking', 'Lifting'] },
-  { handle: 'priya', name: 'Priya Shah', bio: 'Graphic designer, teaches spreadsheets.', skills: ['Design', 'Spreadsheets'] },
-  { handle: 'kofi', name: 'Kofi Mensah', bio: 'Repair café volunteer — bikes and small appliances.', skills: ['Equipment repair'] },
-  { handle: 'lena', name: 'Lena Fischer', bio: 'German teacher, new in town.', skills: ['German', 'Translation'] },
-  { handle: 'mei', name: 'Mei Chen', bio: 'Physics student; translates Mandarin ↔ English.', skills: ['Maths', 'Physics', 'Mandarin'] },
-  { handle: 'sam', name: 'Sam Rivera', bio: 'Home cook. Malaysian and Mexican food.', skills: ['Cooking'] },
-  { handle: 'tomas', name: 'Tomás Silva', bio: 'Gardener; happy to help with hedges and beds.', skills: ['Gardening'] },
+  { handle: 'alice', name: 'Alice Okafor', bio: 'Bootstrap member. Runs the community allotment.', skills: ['Gardening', 'Tutoring'], affiliation: 'Riverside Community Allotment', neighborhood: 'North side', languages: ['English', 'Igbo'], availability: 'Sunday mornings' },
+  { handle: 'ben', name: 'Ben Carter', bio: 'Cook and occasional mover of heavy things.', skills: ['Cooking', 'Lifting'], affiliation: 'Community kitchen volunteers', neighborhood: 'East side', languages: ['English'], availability: 'Weekday evenings' },
+  { handle: 'priya', name: 'Priya Shah', bio: 'Graphic designer, teaches spreadsheets.', skills: ['Design', 'Spreadsheets'], affiliation: 'Freelance designer', neighborhood: 'Old Town', languages: ['English', 'Gujarati', 'Hindi'], availability: 'Evenings' },
+  { handle: 'kofi', name: 'Kofi Mensah', bio: 'Repair café volunteer — bikes and small appliances.', skills: ['Equipment repair'], affiliation: 'High Street Repair Café', neighborhood: 'High Street', languages: ['English', 'Twi'], availability: 'Saturdays 10–14' },
+  { handle: 'lena', name: 'Lena Fischer', bio: 'German teacher, new in town.', skills: ['German', 'Translation'], affiliation: 'Adult education college', neighborhood: 'West end', languages: ['German', 'English'], availability: 'Tue/Thu evenings' },
+  { handle: 'mei', name: 'Mei Chen', bio: 'Physics student; translates Mandarin ↔ English.', skills: ['Maths', 'Physics', 'Mandarin'], affiliation: 'City University — Physics', neighborhood: 'University quarter', languages: ['Mandarin', 'English'], availability: 'Weekends, flexible online' },
+  { handle: 'sam', name: 'Sam Rivera', bio: 'Home cook. Malaysian and Mexican food.', skills: ['Cooking'], affiliation: 'Home cook', neighborhood: 'North side', languages: ['English', 'Spanish', 'Malay'], availability: 'Weekday evenings, Saturdays' },
+  { handle: 'tomas', name: 'Tomás Silva', bio: 'Gardener; happy to help with hedges and beds.', skills: ['Gardening'], affiliation: 'Riverside Community Allotment', neighborhood: 'South bank', languages: ['Portuguese', 'English'], availability: 'Weekday mornings' },
 ] as const;
+
+/** Self-reported profile fields (seeded directly, like bio and skills). */
+const profileOf = (m: (typeof DEMO_MEMBERS)[number]) => ({
+  bio: m.bio,
+  skills: [...m.skills],
+  affiliation: m.affiliation,
+  location: m.neighborhood,
+  languages: [...m.languages],
+  availability: m.availability,
+});
 
 type Handle = (typeof DEMO_MEMBERS)[number]['handle'];
 
@@ -56,7 +69,17 @@ export async function seedDemo(prisma: PrismaClient) {
   await step('2024-09-01T10:00:00Z', null, async (tx, ctx) => {
     const a = info('alice');
     const m = await tx.member.create({
-      data: { handle: a.handle, displayName: a.name, email: `${a.handle}@demo.commonhours.test`, passwordHash: hash, bio: a.bio, skills: [...a.skills], isBootstrap: true, joinedAt: ctx.now },
+      data: {
+        handle: a.handle,
+        displayName: a.name,
+        email: `${a.handle}@demo.commonhours.test`,
+        passwordHash: hash,
+        ...profileOf(a),
+        // Private: shown only to the provider of an accepted in-home exchange.
+        homeAddress: '14 Allotment Lane, Flat 2 (key safe code given in person)',
+        isBootstrap: true,
+        joinedAt: ctx.now,
+      },
     });
     ids.alice = m.id;
     await ensureMemberAccount(tx, m.id, m.displayName);
@@ -86,7 +109,7 @@ export async function seedDemo(prisma: PrismaClient) {
       ),
     );
     ids[h] = m.id;
-    await prisma.member.update({ where: { id: m.id }, data: { bio: info(h).bio, skills: [...info(h).skills] } });
+    await prisma.member.update({ where: { id: m.id }, data: profileOf(info(h)) });
   };
 
   /** A historical exchange: proposed by the recipient, accepted, delivered, confirmed by both on time. */
@@ -150,15 +173,15 @@ export async function seedDemo(prisma: PrismaClient) {
 
   // 4. Listings (offers and requests).
   const listings: [Handle, CreateListingInput][] = [
-    ['sam', { type: 'OFFER', title: 'Home-cooked Malaysian dinner', description: 'I cook a two-course Malaysian dinner (nasi lemak + kuih) in your kitchen or mine. Vegetarian on request.', category: 'Cooking', durationMinutes: 120, locationType: 'IN_PERSON', location: 'North side', availability: 'Weekday evenings, Saturdays', requiredSkills: [] }],
+    ['sam', { type: 'OFFER', title: 'Home-cooked Malaysian dinner', description: 'I cook a two-course Malaysian dinner (nasi lemak + kuih) in your kitchen or mine. Vegetarian on request.', category: 'Cooking', durationMinutes: 120, locationType: 'IN_PERSON', location: 'North side', availability: 'Weekday evenings, Saturdays', requiredSkills: [], trustTier: 'RESTRICTED' }],
     ['mei', { type: 'OFFER', title: 'Maths & physics tutoring', description: 'Secondary-school maths and physics, exam practice and homework help.', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Weekends', requiredSkills: [] }],
     ['mei', { type: 'OFFER', title: 'Mandarin ↔ English translation', description: 'Letters, forms and short documents. Up to 2 pages per hour.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Flexible', requiredSkills: [] }],
     ['kofi', { type: 'OFFER', title: 'Bike & small appliance repair', description: 'Bring it to the repair café; we fix it together.', category: 'Equipment repair', durationMinutes: 60, locationType: 'IN_PERSON', location: 'Repair café, High St', availability: 'Saturdays 10–14', requiredSkills: [] }],
     ['priya', { type: 'OFFER', title: 'Posters, flyers and logos', description: 'Simple, accessible print design for community events.', category: 'Design', durationMinutes: 90, locationType: 'ONLINE', location: '', availability: 'Evenings', requiredSkills: [] }],
     ['alice', { type: 'OFFER', title: 'Allotment planning session', description: 'Plan a year of planting for a small plot or balcony.', category: 'Gardening', durationMinutes: 60, locationType: 'IN_PERSON', location: 'Community allotment', availability: 'Sunday mornings', requiredSkills: [] }],
-    ['tomas', { type: 'OFFER', title: 'Hedge trimming & weeding', description: 'Tools provided. Green waste taken to the compost.', category: 'Gardening', durationMinutes: 120, locationType: 'IN_PERSON', location: 'Anywhere in town', availability: 'Weekday mornings', requiredSkills: [] }],
+    ['tomas', { type: 'OFFER', title: 'Hedge trimming & weeding', description: 'Tools provided. Green waste taken to the compost.', category: 'Gardening', durationMinutes: 120, locationType: 'IN_PERSON', location: 'Anywhere in town', availability: 'Weekday mornings', requiredSkills: [], trustTier: 'RESTRICTED' }],
     ['lena', { type: 'OFFER', title: 'German conversation practice', description: 'Relaxed conversation for beginners and intermediate learners.', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Tue/Thu evenings', requiredSkills: [] }],
-    ['ben', { type: 'REQUEST', title: 'Washing machine door seal', description: 'The door seal leaks. I have the replacement part; need someone who knows how to fit it.', category: 'Equipment repair', durationMinutes: 180, locationType: 'IN_PERSON', location: 'East side', availability: 'Any weekday after 16:00', requiredSkills: ['Equipment repair'] }],
+    ['ben', { type: 'REQUEST', title: 'Washing machine door seal', description: 'The door seal leaks. I have the replacement part; need someone who knows how to fit it.', category: 'Equipment repair', durationMinutes: 180, locationType: 'IN_PERSON', location: 'East side', availability: 'Any weekday after 16:00', requiredSkills: ['Equipment repair'], trustTier: 'RESTRICTED' }],
     ['lena', { type: 'REQUEST', title: 'Rental contract translation (German → English)', description: 'Help me understand a 4-page rental contract.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'This month', requiredSkills: ['German'] }],
   ];
   const listingIds: Record<string, string> = {};
@@ -166,6 +189,32 @@ export async function seedDemo(prisma: PrismaClient) {
     const row = await step('2026-09-01T10:00:00Z', owner, (tx, ctx) => createListing(tx, ctx, ids[owner], l));
     listingIds[`${owner}:${l.title}`] = row.id;
   }
+  // More translation requests from different people → real demand for the only translation provider (Mei).
+  const laterRequests: [Handle, string, CreateListingInput][] = [
+    ['ben', '2026-09-24T10:00:00Z', { type: 'REQUEST', title: 'Mandarin recipe cards into English', description: 'Six handwritten recipe cards from a friend’s grandmother.', category: 'Translation', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: 'Any evening', requiredSkills: ['Mandarin'] }],
+    ['priya', '2026-09-26T10:00:00Z', { type: 'REQUEST', title: 'Exhibition captions English → Mandarin', description: '12 short captions for the community photo exhibition.', category: 'Translation', durationMinutes: 120, locationType: 'ONLINE', location: '', availability: 'Before mid-October', requiredSkills: ['Mandarin'] }],
+    // A high-trust task: entering Alice's home while she is away. Alice also asks for relationship trust ≥ 0.5.
+    ['alice', '2026-09-27T10:00:00Z', { type: 'REQUEST', title: 'Feed my cat and water plants while I’m away', description: 'Let yourself in with the key safe, feed Juniper and water the balcony plants, twice during my week away.', category: 'Other', durationMinutes: 60, locationType: 'IN_PERSON', location: 'North side', availability: 'One week in October', requiredSkills: [], trustTier: 'HIGH_TRUST', minRelationshipTrust: 0.5 }],
+  ];
+  for (const [owner, when, l] of laterRequests) {
+    const row = await step(when, owner, (tx, ctx) => createListing(tx, ctx, ids[owner], l));
+    listingIds[`${owner}:${l.title}`] = row.id;
+  }
+
+  // Skill tier by peer review (a self-claim alone never raises a price): Mei claims Advanced in
+  // Translation with evidence; Priya (credibility ≥ 40, no conflict) reviews and approves.
+  const claim = await step('2026-09-20T10:00:00Z', 'mei', (tx, ctx) =>
+    createSkillClaim(tx, ctx, ids.mei, { category: 'Translation', tier: 'ADVANCED', evidence: 'HSK 6 certificate; three years translating letters and forms for the university international office.' }),
+  );
+  await step('2026-09-21T10:00:00Z', 'priya', (tx, ctx) => reviewSkillClaim(tx, ctx, claim.id, ids.priya, true, 'Saw her HSK 6 certificate and two of her translations; accurate and clear.'));
+
+  // Contact verification through the real flow. In demo mode the code only appears in the on-screen
+  // email preview, so Mei's address is labelled "demo-verified", never plain "verified".
+  for (const h of ['mei', 'alice'] as const) {
+    const r = await step('2026-09-28T09:00:00Z', h, (tx, ctx) => requestEmailVerification(tx, ctx, ids[h]));
+    await step('2026-09-28T09:05:00Z', h, (tx, ctx) => confirmEmailVerification(tx, ctx, ids[h], r.code));
+  }
+  await updatePreferences(ids.mei, true, []);
 
   // 5. The seeded dispute: Kofi repairs Lena's kettle; Lena disputes the deliverable.
   //    With Alice conflicted, Ben (past voucher of Lena) and Priya (Kofi's inviter) excluded,
@@ -236,6 +285,9 @@ export async function seedDemo(prisma: PrismaClient) {
     await runCreditExpiry(tx, ctx);
     await refreshCredibility(tx, ctx, Object.values(ids), 'demo clock set to today');
   });
+  // Notifications generated while building the history are marked read, so the bell starts with
+  // only the last few days' events.
+  await prisma.notification.updateMany({ where: { createdAt: { lt: new Date('2026-09-25T00:00:00Z') } }, data: { readAt: DEMO_NOW } });
   await prisma.systemState.upsert({
     where: { id: 1 },
     create: { id: 1, simulatedNow: DEMO_NOW, seededAt: new Date() },

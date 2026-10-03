@@ -3,8 +3,21 @@ import type { MemberProfile, MemberSummary } from '@commonhours/shared';
 import type { Db } from '../../core/db';
 import { AppError, notFound } from '../../core/errors';
 
-export function toSummary(m: Pick<Member, 'id' | 'handle' | 'displayName' | 'status' | 'isBootstrap'>): MemberSummary {
-  return { id: m.id, handle: m.handle, displayName: m.displayName, status: m.status, isBootstrap: m.isBootstrap };
+type SummaryInput = Pick<Member, 'id' | 'handle' | 'displayName' | 'status' | 'isBootstrap'> &
+  Partial<Pick<Member, 'photoUrl' | 'affiliation' | 'location' | 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt'>>;
+
+/** Contact verification as a label: only "VERIFIED" when a code was really delivered and confirmed. */
+export function contactVerificationOf(m: Partial<Pick<Member, 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt'>>) {
+  if (m.phoneVerifiedAt || (m.contactEmailVerifiedAt && m.contactEmailVerifiedVia === 'email-code')) return 'VERIFIED' as const;
+  if (m.contactEmailVerifiedAt) return 'DEMO_VERIFIED' as const;
+  return 'UNVERIFIED' as const;
+}
+
+export function toSummary(m: SummaryInput): MemberSummary {
+  const base: MemberSummary = { id: m.id, handle: m.handle, displayName: m.displayName, status: m.status, isBootstrap: m.isBootstrap };
+  // Only full member rows carry profile basics; selects that omit them keep the v1 shape.
+  if (m.affiliation === undefined) return base;
+  return { ...base, photoUrl: m.photoUrl ?? null, affiliation: m.affiliation, neighborhood: m.location ?? '', contactVerification: contactVerificationOf(m) };
 }
 
 export function toProfile(m: Member): MemberProfile {

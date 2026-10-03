@@ -37,6 +37,16 @@
 | Interactive transaction timeout | Long lock wait (e.g. many concurrent requests) | `core/db.ts` `withTx` (20s timeout) | Retry; check for stuck sessions in `pg_stat_activity` |
 | `ledgerBalanced: false` or `lotInvariantOk: false` | A bug in a ledger write path | `ledger.service.ts` `postTransfer`, `ledger.rules.ts` | Run `npm test`; inspect the latest `LedgerTransaction` rows |
 | Tests fail to create `commonhours_test` | DB user lacks `CREATEDB` | `apps/api/test/global-setup.ts` | Create it manually: `createdb commonhours_test` (Docker's default user can) |
+| `TASK_LOCKED` | Provider fails a task requirement (score, relationship trust, verified contact, or owner approval at final acceptance) | `modules/task-eligibility/eligibility.rules.ts`, `eligibility.service.ts` `assertTaskEligible` | Read `details.eligibility.checks`; Debug → Task eligibility; owner presses *Approve home access* |
+| `REQUIREMENT_TOO_LOW` | Requester set a minimum below the tier/category minimum | `eligibility.rules.ts` `assertRequesterRequirements` | Expected; raise it or leave empty |
+| `BUDGET_EXCEEDED` | Quote total > requester's max budget | `exchange.service.ts` `assertBudget`, `pricing.rules.ts` | Expected; shorten, drop gift, raise budget |
+| Price looks wrong | Skill tier or demand inputs | `pricing.service.ts` `demandFor`, `pricing.skills.ts` `effectiveSkillTier` | Debug → Pricing shows demand inputs per category, tiers and every exchange's quote/snapshot |
+| Price changed after acceptance | Must never happen: accepted exchanges read `priceSnapshot` | `pricing.service.ts` `pricingOf` | Compare `pricingQuote`/`priceSnapshot` in Debug → Pricing |
+| Trust did not increase | Exchange was disputed/partial/cancelled, pair window (2 per 30 days) or cap 0.7 reached; or the earned edge is weaker than an existing path (relationship trust never decreases) | `trust.earned.rules.ts`, `trust.earned.ts` | Debug → Trust updates: every row has `applied` and `reason`; one row per exchange (unique) |
+| Jury pick looks surprising | Ranking is by closeness, not score | `attestation.eligibility.ts` `rankCandidates` | Debug → Jury candidates: closeness, rank, inclusion/exclusion reasons and the stored snapshot |
+| No notification | Event deduplicated, or the transaction rolled back (nothing is sent for rolled-back changes) | `notification.events.ts`, `core/db.ts` `afterCommit` | Debug → Notifications shows dedupe keys; server log `[afterCommit]` |
+| Email not sent | Not opted in, address unverified, demo preview, or SMTP failure | `notification.service.ts`, `email.provider.ts` | Debug → Notifications: delivery mode (no secrets), outbox status, `lastError`, attempts |
+| `VERIFICATION_FAILED` | Wrong/expired code, or email delivery disabled outside demo | `profiles/profile.verification.ts` | Send a new code; configure `EMAIL_PROVIDER` |
 | Graph shows a member as disconnected | Their only edges are expired/revoked/pending, or they left | `vouch.rules.ts` `effectiveEdge`, `trust.service.ts` | Inspect the edges in the table view or Debug → Trust edges |
 
 ## Useful commands
@@ -55,4 +65,6 @@ curl -s -X POST localhost:4000/api/demo/reset
 - **Domain clock:** services never call `new Date()` for decisions. They use `ctx.now` from `SystemState.simulatedNow` (`core/context.ts`). If times look wrong, check the demo clock.
 - **Every write goes through `withTx`,** and `recordAudit` is called with the same `tx`. A failed request leaves neither the change nor its audit event behind.
 - **Lock order:** exchange row → reservation row → ledger accounts (sorted by id). Keep this order in new code to avoid deadlocks.
-- **Seeded selection** in demo mode is derived from handles + scheduled time, so a reset replays the same attestors.
+- **Seeded selection** in demo mode is derived from handles + scheduled time, so a reset replays the same attestors (ranking by closeness first, the seed only orders equal closeness).
+- **After-commit side effects:** `notify()` queues work with `afterCommit`; `withTx` runs it after the commit and swallows/logs errors. Tests call `deliverOutbox()` explicitly; `setEmailProviderForTests` injects a fake provider.
+- **Two graphs:** `TrustSnapshot.graph` (vouches only, BFS hops: discovery and the attestor ≥2-hop rule) and `relGraph` (vouch + earned combined per pair, strongest path: relationship trust everywhere else).

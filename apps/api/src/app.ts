@@ -17,6 +17,10 @@ import { expiryRouter } from './modules/expiry/expiry.routes';
 import { invitationsRouter, publicInvitationsRouter } from './modules/invitations/invitation.routes';
 import { creditsRouter } from './modules/ledger/ledger.routes';
 import { membersRouter } from './modules/members/member.routes';
+import { notificationsRouter } from './modules/notifications/notification.routes';
+import { pricingRouter } from './modules/pricing/pricing.routes';
+import { profilesRouter } from './modules/profiles/profile.routes';
+import { eligibilityRouter } from './modules/task-eligibility/eligibility.routes';
 import { listingsRouter } from './modules/services/listing.routes';
 import { trustRouter } from './modules/trust/trust.routes';
 import { vouchesRouter } from './modules/vouches/vouch.routes';
@@ -73,6 +77,10 @@ export function createApp() {
   authed.use('/conflicts', conflictsRouter);
   authed.use('/withdrawal', withdrawalRouter);
   authed.use('/audit', auditRouter);
+  authed.use('/profiles', profilesRouter);
+  authed.use('/notifications', notificationsRouter);
+  authed.use('/pricing', pricingRouter);
+  authed.use('/eligibility', eligibilityRouter);
   if (env.debugEndpoints) authed.use('/debug', debugRouter);
   app.use('/api', authed);
 
