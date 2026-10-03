@@ -22,3 +22,7 @@ export function addMonths(d: Date, months: number): Date {
 export function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / DAY_MS);
 }
+
+export function addMinutes(d: Date, minutes: number): Date {
+  return new Date(d.getTime() + minutes * 60_000);
+}

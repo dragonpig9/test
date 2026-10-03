@@ -3,6 +3,7 @@ import type { ExchangeView } from '@commonhours/shared';
 import type { Db } from '../../core/db';
 import { notFound } from '../../core/errors';
 import { toSummary } from '../members/member.repo';
+import { pricingOf } from '../pricing/pricing.service';
 import { availableActions, roleOf } from './exchange.rules';
 
 export const exchangeInclude = { provider: true, recipient: true, proposer: true, reservation: true, dispute: { select: { id: true } } } as const;
@@ -51,6 +52,17 @@ export function toExchangeView(ex: Full, viewerId: string, now: Date): ExchangeV
     partialProposedById: ex.partialProposedById,
     partialNote: ex.partialNote,
     createdAt: ex.createdAt.toISOString(),
+    trustTier: ex.trustTier,
+    minCredibility: ex.minCredibility,
+    minRelationshipTrust: ex.minRelationshipTrust,
+    maxCreditBudget: ex.maxCreditBudget,
+    homeAccess: {
+      required: ex.trustTier === 'HIGH_TRUST',
+      approved: !!ex.homeAccessApprovedAt && ex.homeAccessApprovedVersion === ex.termsVersion,
+      approvedAt: iso(ex.homeAccessApprovedAt),
+    },
+    pricing: pricingOf(ex),
+    priceLocked: !!ex.priceLockedAt || ex.acceptedAt !== null,
     reservation: r
       ? {
           id: r.id,

@@ -1,13 +1,17 @@
 import { Router } from 'express';
-import { acceptExchangeSchema, cancelExchangeSchema, exchangeTermsSchema, partialSchema, proposeExchangeSchema } from '@commonhours/shared';
+import { acceptExchangeSchema, cancelExchangeSchema, exchangeTermsSchema, homeAccessSchema, partialSchema, proposeExchangeSchema } from '@commonhours/shared';
 import { prisma, withTx } from '../../core/db';
 import { actorId, ah, parseBody } from '../../core/http';
 import { timelineFor } from '../audit/audit.repo';
+import { homeAddressFor } from '../profiles/profile.service';
+import { exchangeEligibility } from '../task-eligibility/eligibility.service';
+import { trustUpdateForExchange } from '../trust/trust.earned';
 import { findPath, loadTrust } from '../trust/trust.service';
 import { getExchange, listExchangesFor, toExchangeView } from './exchange.repo';
 import {
   acceptExchange,
   acceptPartial,
+  approveHomeAccess,
   cancelExchange,
   confirmCompletion,
   declineOrWithdraw,
@@ -42,7 +46,17 @@ exchangesRouter.get(
     const ids = [ex.id, ...(ex.reservation ? [ex.reservation.id] : []), ...(ex.dispute ? [ex.dispute.id] : [])];
     const ledgerTx = await prisma.ledgerTransaction.findMany({ where: { exchangeId: ex.id }, select: { id: true } });
     const timeline = await timelineFor(prisma, [...ids, ...ledgerTx.map((t) => t.id)]);
-    res.json({ exchange: v, trustPath, timeline, liabilitySnapshot: ex.liabilitySnapshot });
+    // Before acceptance: live eligibility of the provider. After: the snapshot recorded at acceptance.
+    const eligibility = ex.status === 'PROPOSED' ? await exchangeEligibility(prisma, ex, req.ctx.now) : (ex.eligibilitySnapshot ?? null);
+    res.json({
+      exchange: v,
+      trustPath,
+      timeline,
+      liabilitySnapshot: ex.liabilitySnapshot,
+      eligibility,
+      trustUpdate: await trustUpdateForExchange(prisma, ex.id),
+      homeAddress: await homeAddressFor(prisma, ex, me),
+    });
   }),
 );
 
@@ -72,6 +86,16 @@ exchangesRouter.post(
     const me = actorId(req, M);
     const { termsVersion } = parseBody(acceptExchangeSchema, req.body, M);
     await withTx((tx) => acceptExchange(tx, req.ctx, req.params.id, me, termsVersion));
+    res.json({ exchange: await view(req.params.id, me, req.ctx.now) });
+  }),
+);
+
+exchangesRouter.post(
+  '/:id/home-access',
+  ah(async (req, res) => {
+    const me = actorId(req, M);
+    const { termsVersion } = parseBody(homeAccessSchema, req.body, M);
+    await withTx((tx) => approveHomeAccess(tx, req.ctx, req.params.id, me, termsVersion));
     res.json({ exchange: await view(req.params.id, me, req.ctx.now) });
   }),
 );

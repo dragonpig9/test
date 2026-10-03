@@ -6,7 +6,10 @@ import type { Db, Tx } from '../../core/db';
 import { AppError, forbidden, notFound } from '../../core/errors';
 import { recordAudit } from '../audit/audit.service';
 import { scoreOf } from '../credibility/credibility.service';
-import { assertCanCommit, toSummary } from '../members/member.repo';
+import { assertCanCommit, getMember, toSummary } from '../members/member.repo';
+import { estimator } from '../pricing/pricing.service';
+import { assertRequesterRequirements, tierMinimum } from '../task-eligibility/eligibility.rules';
+import { listingEligibility } from '../task-eligibility/eligibility.service';
 import { loadTrust, reachFrom } from '../trust/trust.service';
 import { isRestrictedCategory } from './listing.rules';
 
@@ -27,11 +30,28 @@ export function toListingView(l: Listing & { owner: Member }): ListingView {
     requiredSkills: l.requiredSkills,
     status: l.status,
     createdAt: l.createdAt.toISOString(),
+    trustTier: l.trustTier,
+    minCredibility: l.minCredibility,
+    minRelationshipTrust: l.minRelationshipTrust,
+    maxCreditBudget: l.maxCreditBudget,
   };
 }
 
 export async function createListing(tx: Tx, ctx: Ctx, ownerId: string, input: CreateListingInput) {
   const owner = await assertCanCommit(tx, ownerId, MODULE);
+  // Requests carry the requester's requirements; offers only describe the access level of the service.
+  const trustTier = input.trustTier ?? 'STANDARD';
+  const requirements =
+    input.type === 'REQUEST'
+      ? { trustTier, minCredibility: input.minCredibility ?? null, minRelationshipTrust: input.minRelationshipTrust ?? null, maxCreditBudget: input.maxCreditBudget ?? null }
+      : { trustTier, minCredibility: null, minRelationshipTrust: null, maxCreditBudget: null };
+  if (input.type === 'REQUEST') assertRequesterRequirements(trustTier, input.category, requirements.minCredibility, MODULE);
+  if (input.type === 'OFFER' && tierMinimum(trustTier) > 0) {
+    const score = await scoreOf(tx, ownerId, ctx.now);
+    if (score < tierMinimum(trustTier)) {
+      throw new AppError('TASK_LOCKED', `Offering ${trustTier.toLowerCase().replace('_', '-')} services needs credibility ≥ ${tierMinimum(trustTier)} (you have ${score}).`, MODULE, { threshold: tierMinimum(trustTier), current: score });
+    }
+  }
   if (input.type === 'OFFER' && isRestrictedCategory(input.category)) {
     const score = await scoreOf(tx, ownerId, ctx.now);
     const th = POLICY.credibility.thresholds.restrictedCategory;
@@ -45,7 +65,7 @@ export async function createListing(tx: Tx, ctx: Ctx, ownerId: string, input: Cr
     }
   }
   const l = await tx.listing.create({
-    data: { ...input, ownerId, createdAt: ctx.now, updatedAt: ctx.now },
+    data: { ...input, ...requirements, ownerId, createdAt: ctx.now, updatedAt: ctx.now },
     include: { owner: true },
   });
   await recordAudit(tx, ctx, {
@@ -53,7 +73,7 @@ export async function createListing(tx: Tx, ctx: Ctx, ownerId: string, input: Cr
     action: 'listing.created',
     entityType: 'LISTING',
     entityId: l.id,
-    after: { type: l.type, title: l.title, category: l.category, durationMinutes: l.durationMinutes },
+    after: { type: l.type, title: l.title, category: l.category, durationMinutes: l.durationMinutes, ...requirements },
     reason: 'Member posted a listing.',
     ruleId: RULES.LISTING,
     summary: `${owner.displayName} posted ${l.type === 'OFFER' ? 'an offer' : 'a request'}: ${l.title}`,
@@ -119,11 +139,22 @@ export async function discoverListings(
     orderBy: { createdAt: 'desc' },
   });
   const reach = reachFrom(await loadTrust(db, now), viewerId);
-  return rows
-    .map((l) => {
-      const r = reach.get(l.ownerId);
-      return { ...toListingView(l), reachability: { reachable: !!r, hops: r?.hops ?? null, strength: r?.strength ?? null } };
-    })
-    .filter((l) => !f.reachableOnly || l.owner.id === viewerId || l.reachability.reachable)
-    .filter((l) => f.maxHops === undefined || l.owner.id === viewerId || (l.reachability.hops ?? Infinity) <= f.maxHops);
+  const viewer = await getMember(db, viewerId);
+  const eligibility = await listingEligibility(db, viewer, rows, now);
+  const estimate = estimator(db, now);
+  const out: ListingView[] = [];
+  for (const l of rows) {
+    const r = reach.get(l.ownerId);
+    const view = { ...toListingView(l), reachability: { reachable: !!r, hops: r?.hops ?? null, strength: r?.strength ?? null } };
+    if (f.reachableOnly && l.ownerId !== viewerId && !view.reachability.reachable) continue;
+    if (f.maxHops !== undefined && l.ownerId !== viewerId && (view.reachability.hops ?? Infinity) > f.maxHops) continue;
+    // Who would provide: the owner of an offer, or the viewer for someone else's request.
+    const providerId = l.type === 'OFFER' ? l.ownerId : l.ownerId === viewerId ? null : viewerId;
+    out.push({
+      ...view,
+      eligibility: eligibility.get(l.id) ?? null,
+      priceEstimate: providerId ? await estimate(providerId, l.category, l.durationMinutes, l.maxCreditBudget) : null,
+    });
+  }
+  return out;
 }

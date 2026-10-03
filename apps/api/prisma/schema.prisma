@@ -36,25 +36,56 @@ model Member {
   leaveReason  String?
   createdAt    DateTime     @default(now())
 
-  invitationsSent     Invitation[]       @relation("InvitationInviter")
-  invitationAccepted  Invitation?        @relation("InvitationAcceptedBy")
-  vouchesGiven        Vouch[]            @relation("Voucher")
-  vouchesReceived     Vouch[]            @relation("Vouchee")
-  amendmentsProposed  VouchAmendment[]
-  listings            Listing[]
-  exchangesProviding  Exchange[]         @relation("ExchangeProvider")
-  exchangesReceiving  Exchange[]         @relation("ExchangeRecipient")
-  exchangesProposed   Exchange[]         @relation("ExchangeProposer")
-  ledgerAccount       LedgerAccount?
-  creditLots          CreditLot[]
-  disputesOpened      Dispute[]
-  evidence            Evidence[]
-  assignments         AttestorAssignment[]
-  conflictsDeclared   ConflictDeclaration[] @relation("ConflictDeclarer")
-  conflictsAgainst    ConflictDeclaration[] @relation("ConflictOther")
-  penalties           CredibilityPenalty[]
+  // Profile (self-reported unless the name says "Verified"). Email/phone/address are private by default.
+  photoUrl                 String?
+  affiliation              String    @default("")
+  languages                String[]  @default([])
+  availability             String    @default("")
+  /// Address used for contact + notifications. Falls back to the login email when null.
+  contactEmail             String?
+  /// Set only by the email-verification flow (a code sent to the address and confirmed).
+  contactEmailVerifiedAt   DateTime?
+  /// "email-code" (code delivered by a configured email provider) or "demo-preview" (demo mode:
+  /// the code was shown in the on-screen email preview, so mailbox ownership was NOT proven).
+  contactEmailVerifiedVia  String?
+  phone                    String?
+  /// No SMS provider is configured, so nothing sets this yet (phone always shows "not verified").
+  phoneVerifiedAt          DateTime?
+  /// Exact address. Shown only to the provider of an accepted in-home exchange.
+  homeAddress              String?
+  shareContactWithPartners Boolean   @default(false)
+  juryAvailable            Boolean   @default(true)
+  profileUpdatedAt         DateTime?
+  // Notification preferences: email delivery is opt-in.
+  emailNotifications       Boolean   @default(false)
+  emailCategories          String[]  @default([])
+
+  invitationsSent      Invitation[]          @relation("InvitationInviter")
+  invitationAccepted   Invitation?           @relation("InvitationAcceptedBy")
+  vouchesGiven         Vouch[]               @relation("Voucher")
+  vouchesReceived      Vouch[]               @relation("Vouchee")
+  amendmentsProposed   VouchAmendment[]
+  listings             Listing[]
+  exchangesProviding   Exchange[]            @relation("ExchangeProvider")
+  exchangesReceiving   Exchange[]            @relation("ExchangeRecipient")
+  exchangesProposed    Exchange[]            @relation("ExchangeProposer")
+  ledgerAccount        LedgerAccount?
+  creditLots           CreditLot[]
+  disputesOpened       Dispute[]
+  evidence             Evidence[]
+  assignments          AttestorAssignment[]
+  conflictsDeclared    ConflictDeclaration[] @relation("ConflictDeclarer")
+  conflictsAgainst     ConflictDeclaration[] @relation("ConflictOther")
+  penalties            CredibilityPenalty[]
   credibilitySnapshots CredibilitySnapshot[]
-  auditEvents         AuditEvent[]
+  auditEvents          AuditEvent[]
+  earnedAsA            EarnedRelationship[]  @relation("EarnedA")
+  earnedAsB            EarnedRelationship[]  @relation("EarnedB")
+  skillClaims          SkillClaim[]
+  skillReviews         SkillReview[]
+  emailVerifications   EmailVerification[]
+  notifications        Notification[]
+  emailOutbox          EmailOutbox[]
 }
 
 // ───────────────────────── invitations & vouches ─────────────────────────
@@ -100,17 +131,17 @@ enum VouchOrigin {
 
 /// Directed edge voucher -> vouchee.
 model Vouch {
-  id                String      @id @default(cuid())
+  id                String               @id @default(cuid())
   voucherId         String
-  voucher           Member      @relation("Voucher", fields: [voucherId], references: [id])
+  voucher           Member               @relation("Voucher", fields: [voucherId], references: [id])
   voucheeId         String
-  vouchee           Member      @relation("Vouchee", fields: [voucheeId], references: [id])
+  vouchee           Member               @relation("Vouchee", fields: [voucheeId], references: [id])
   strength          Float
   liabilityPct      Int
   status            VouchStatus
   origin            VouchOrigin
-  invitationId      String?     @unique
-  invitation        Invitation? @relation(fields: [invitationId], references: [id])
+  invitationId      String?              @unique
+  invitation        Invitation?          @relation(fields: [invitationId], references: [id])
   termsVersion      String
   createdAt         DateTime
   voucherConsentAt  DateTime
@@ -167,24 +198,46 @@ enum LocationType {
   IN_PERSON
 }
 
+/// STANDARD: online / public / basic help. RESTRICTED: in someone's home while they are present.
+/// HIGH_TRUST: entering someone's home while the owner is absent.
+enum TrustTier {
+  STANDARD
+  RESTRICTED
+  HIGH_TRUST
+}
+
+enum SkillTier {
+  STANDARD
+  SKILLED
+  ADVANCED
+  SPECIALIST
+}
+
 model Listing {
-  id              String        @id @default(cuid())
-  type            ListingType
-  title           String
-  description     String
-  category        String
-  ownerId         String
-  owner           Member        @relation(fields: [ownerId], references: [id])
-  durationMinutes Int
-  locationType    LocationType
-  location        String        @default("")
-  availability    String
-  requiredSkills  String[]
-  status          ListingStatus @default(OPEN)
-  createdAt       DateTime
-  updatedAt       DateTime
-  withdrawnAt     DateTime?
-  exchanges       Exchange[]
+  id                   String        @id @default(cuid())
+  type                 ListingType
+  title                String
+  description          String
+  category             String
+  ownerId              String
+  owner                Member        @relation(fields: [ownerId], references: [id])
+  durationMinutes      Int
+  locationType         LocationType
+  location             String        @default("")
+  availability         String
+  requiredSkills       String[]
+  /// Access level of the task (see POLICY.taskEligibility). Requests set it for their own home.
+  trustTier            TrustTier     @default(STANDARD)
+  /// Requester-raised minimums (never below the tier/category minimum).
+  minCredibility       Int?
+  minRelationshipTrust Float?
+  /// Requester's maximum total credits (service + gift), hundredths.
+  maxCreditBudget      Int?
+  status               ListingStatus @default(OPEN)
+  createdAt            DateTime
+  updatedAt            DateTime
+  withdrawnAt          DateTime?
+  exchanges            Exchange[]
 
   @@index([status, category])
 }
@@ -202,52 +255,74 @@ enum ExchangeStatus {
 
 /// Agreed work between a provider and a recipient. Separate from the listing it came from.
 model Exchange {
-  id                      String         @id @default(cuid())
-  listingId               String?
-  listing                 Listing?       @relation(fields: [listingId], references: [id])
-  linkedExchangeId        String?
-  providerId              String
-  provider                Member         @relation("ExchangeProvider", fields: [providerId], references: [id])
-  recipientId             String
-  recipient               Member         @relation("ExchangeRecipient", fields: [recipientId], references: [id])
-  proposerId              String
-  proposer                Member         @relation("ExchangeProposer", fields: [proposerId], references: [id])
-  deliverable             String
-  category                String
-  durationMinutes         Int
-  scheduledAt             DateTime
-  location                String         @default("")
-  punctualityRequired     Boolean
+  id                        String         @id @default(cuid())
+  listingId                 String?
+  listing                   Listing?       @relation(fields: [listingId], references: [id])
+  linkedExchangeId          String?
+  providerId                String
+  provider                  Member         @relation("ExchangeProvider", fields: [providerId], references: [id])
+  recipientId               String
+  recipient                 Member         @relation("ExchangeRecipient", fields: [recipientId], references: [id])
+  proposerId                String
+  proposer                  Member         @relation("ExchangeProposer", fields: [proposerId], references: [id])
+  deliverable               String
+  category                  String
+  durationMinutes           Int
+  scheduledAt               DateTime
+  location                  String         @default("")
+  punctualityRequired       Boolean
   /// Standard amount derived from duration (1h = 1 credit), in hundredths.
-  creditAmount            Int
+  creditAmount              Int
   /// Voluntary gift from the recipient, recorded and agreed before work starts.
-  giftBonus               Int            @default(0)
-  cancellationNoticeHours Int
-  cancellationTerms       String         @default("")
-  confirmationDeadline    DateTime
-  status                  ExchangeStatus
-  termsVersion            Int            @default(1)
-  providerAcceptedAt      DateTime?
-  recipientAcceptedAt     DateTime?
-  acceptedAt              DateTime?
-  providerConfirmedAt     DateTime?
-  recipientConfirmedAt    DateTime?
-  settledAt               DateTime?
-  settledAmount           Int?
-  closedAt                DateTime?
-  cancelRequestedById     String?
-  cancelRequestedAt       DateTime?
-  cancelReason            String?
-  partialAmount           Int?
-  partialProposedById     String?
-  partialNote             String?
+  giftBonus                 Int            @default(0)
+  cancellationNoticeHours   Int
+  cancellationTerms         String         @default("")
+  confirmationDeadline      DateTime
+  status                    ExchangeStatus
+  termsVersion              Int            @default(1)
+  providerAcceptedAt        DateTime?
+  recipientAcceptedAt       DateTime?
+  acceptedAt                DateTime?
+  providerConfirmedAt       DateTime?
+  recipientConfirmedAt      DateTime?
+  settledAt                 DateTime?
+  settledAmount             Int?
+  closedAt                  DateTime?
+  cancelRequestedById       String?
+  cancelRequestedAt         DateTime?
+  cancelReason              String?
+  partialAmount             Int?
+  partialProposedById       String?
+  partialNote               String?
   /// Direct vouches that were active for each party when the exchange was accepted.
   /// Liability penalties use this snapshot so a later revocation cannot erase accountability.
-  liabilitySnapshot       Json?
-  createdAt               DateTime
-  updatedAt               DateTime
-  reservation             Reservation?
-  dispute                 Dispute?
+  liabilitySnapshot         Json?
+  // Task eligibility (requester-controlled; provider edits cannot change these).
+  trustTier                 TrustTier      @default(STANDARD)
+  minCredibility            Int?
+  minRelationshipTrust      Float?
+  /// Explicit home-access approval by the recipient (owner), valid for one terms version.
+  homeAccessApprovedAt      DateTime?
+  homeAccessApprovedVersion Int?
+  /// Eligibility checks recorded when the exchange was accepted.
+  eligibilitySnapshot       Json?
+  // Pricing. Legacy exchanges (before premium pricing) have baseCredits = null and creditAmount = hours.
+  maxCreditBudget           Int?
+  baseCredits               Int?
+  skillTier                 SkillTier?
+  /// Multipliers in hundredths (125 = ×1.25).
+  skillMultiplierPct        Int?
+  demandMultiplierPct       Int?
+  /// Quote for the current terms version (both parties accept this exact price).
+  pricingQuote              Json?
+  /// Frozen copy of the quote at acceptance. Never recomputed.
+  priceSnapshot             Json?
+  priceLockedAt             DateTime?
+  createdAt                 DateTime
+  updatedAt                 DateTime
+  reservation               Reservation?
+  dispute                   Dispute?
+  trustUpdate               TrustUpdate?
 
   @@index([providerId])
   @@index([recipientId])
@@ -371,16 +446,16 @@ enum DisputeCondition {
 }
 
 model Dispute {
-  id                    String          @id @default(cuid())
-  exchangeId            String          @unique
-  exchange              Exchange        @relation(fields: [exchangeId], references: [id])
+  id                    String               @id @default(cuid())
+  exchangeId            String               @unique
+  exchange              Exchange             @relation(fields: [exchangeId], references: [id])
   openedById            String
-  openedBy              Member          @relation(fields: [openedById], references: [id])
+  openedBy              Member               @relation(fields: [openedById], references: [id])
   condition             DisputeCondition
   claim                 String
   status                DisputeStatus
   /// 1 = single attestor, 2 = panel of three.
-  stage                 Int             @default(1)
+  stage                 Int                  @default(1)
   outcome               DisputeOutcome?
   outcomeSource         String?
   reviewReason          String?
@@ -419,6 +494,8 @@ model AttestorSelection {
   selectedIds   String[]
   requiredCount Int
   sufficient    Boolean
+  /// "random-v1" (older rows) or "lowest-closeness-v2".
+  method        String   @default("random-v1")
   createdAt     DateTime
 }
 
@@ -499,6 +576,156 @@ model CredibilitySnapshot {
   reason    String
   createdAt DateTime
 
+  @@index([memberId, createdAt])
+}
+
+// ───────────────────────── earned trust ─────────────────────────
+
+/// Undirected relationship earned through exchanges both members confirmed in full.
+/// Distinct from vouches: it carries NO liability and is never created by an invitation.
+/// memberAId < memberBId (string order) so each pair has one row.
+model EarnedRelationship {
+  id               String        @id @default(cuid())
+  memberAId        String
+  memberA          Member        @relation("EarnedA", fields: [memberAId], references: [id])
+  memberBId        String
+  memberB          Member        @relation("EarnedB", fields: [memberBId], references: [id])
+  strength         Float
+  countedExchanges Int           @default(0)
+  createdAt        DateTime
+  lastExchangeAt   DateTime
+  updatedAt        DateTime
+  updates          TrustUpdate[]
+
+  @@unique([memberAId, memberBId])
+}
+
+/// One row per eligible exchange (unique exchangeId = the increase is applied exactly once).
+model TrustUpdate {
+  id                      String             @id @default(cuid())
+  relationshipId          String
+  relationship            EarnedRelationship @relation(fields: [relationshipId], references: [id])
+  exchangeId              String             @unique
+  exchange                Exchange           @relation(fields: [exchangeId], references: [id])
+  previousStrength        Float
+  newStrength             Float
+  /// false when a limit (cap, pair window) meant no increase.
+  applied                 Boolean
+  reason                  String
+  relationshipTrustBefore Float?
+  relationshipTrustAfter  Float?
+  ruleId                  String
+  createdAt               DateTime
+
+  @@index([relationshipId, createdAt])
+}
+
+// ───────────────────────── skills & pricing ─────────────────────────
+
+enum SkillClaimStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+/// A member asks for a higher skill tier in one category. Self-claims never raise the price
+/// on their own; only APPROVED claims (peer review) or the record-based rule do.
+model SkillClaim {
+  id        String           @id @default(cuid())
+  memberId  String
+  member    Member           @relation(fields: [memberId], references: [id])
+  category  String
+  tier      SkillTier
+  evidence  String
+  status    SkillClaimStatus @default(PENDING)
+  createdAt DateTime
+  decidedAt DateTime?
+  reviews   SkillReview[]
+
+  @@index([memberId, category])
+}
+
+model SkillReview {
+  id         String     @id @default(cuid())
+  claimId    String
+  claim      SkillClaim @relation(fields: [claimId], references: [id])
+  reviewerId String
+  reviewer   Member     @relation(fields: [reviewerId], references: [id])
+  approve    Boolean
+  note       String
+  createdAt  DateTime
+
+  @@unique([claimId, reviewerId])
+}
+
+// ───────────────────────── profiles & notifications ─────────────────────────
+
+model EmailVerification {
+  id         String    @id @default(cuid())
+  memberId   String
+  member     Member    @relation(fields: [memberId], references: [id])
+  address    String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime
+
+  @@index([memberId, createdAt])
+}
+
+/// Persistent in-app notification. dedupeKey prevents the same event notifying twice.
+model Notification {
+  id         String       @id @default(cuid())
+  memberId   String
+  member     Member       @relation(fields: [memberId], references: [id])
+  kind       String
+  category   String
+  title      String
+  body       String
+  link       String?
+  entityType String?
+  entityId   String?
+  dedupeKey  String       @unique
+  readAt     DateTime?
+  /// Domain (possibly simulated) time of the event.
+  createdAt  DateTime
+  email      EmailOutbox?
+
+  @@index([memberId, createdAt])
+}
+
+enum EmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  PREVIEW
+  SKIPPED
+}
+
+/// Persisted outbox: rows are written after the business transaction commits and delivered
+/// (with retries) by the email adapter. A failure here never affects the business change.
+model EmailOutbox {
+  id             String        @id @default(cuid())
+  notificationId String?       @unique
+  notification   Notification? @relation(fields: [notificationId], references: [id])
+  memberId       String
+  member         Member        @relation(fields: [memberId], references: [id])
+  toAddress      String
+  subject        String
+  body           String
+  dedupeKey      String        @unique
+  status         EmailStatus
+  provider       String
+  attempts       Int           @default(0)
+  lastError      String?
+  nextAttemptAt  DateTime
+  sentAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, nextAttemptAt])
   @@index([memberId, createdAt])
 }
 

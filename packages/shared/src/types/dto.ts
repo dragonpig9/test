@@ -9,7 +9,11 @@ import type {
   ListingType,
   LocationType,
   MemberStatus,
+  EmailStatus,
+  NotificationCategory,
   ReservationStatus,
+  SkillTier,
+  TrustTier,
   VoteChoice,
   VouchStatus,
 } from './domain';
@@ -20,6 +24,11 @@ export interface MemberSummary {
   displayName: string;
   status: MemberStatus;
   isBootstrap: boolean;
+  /** Public profile basics (self-reported) and whether a contact method was actually verified. */
+  photoUrl?: string | null;
+  affiliation?: string;
+  neighborhood?: string;
+  contactVerification?: 'VERIFIED' | 'DEMO_VERIFIED' | 'UNVERIFIED';
 }
 
 export interface MemberProfile extends MemberSummary {
@@ -31,7 +40,7 @@ export interface MemberProfile extends MemberSummary {
 }
 
 export interface PermissionCheck {
-  key: 'invite' | 'vouch' | 'attest' | 'noGuarantorNeeded' | 'restrictedCategories';
+  key: 'invite' | 'vouch' | 'attest' | 'noGuarantorNeeded' | 'restrictedCategories' | 'restrictedTasks' | 'highTrustTasks';
   label: string;
   allowed: boolean;
   threshold: number;
@@ -66,9 +75,41 @@ export interface EdgeView {
   explanation: string;
 }
 
+/** Relationship earned through exchanges both members confirmed. Distinct from vouches: no liability. */
+export interface EarnedEdgeView {
+  id: string;
+  memberAId: string;
+  memberBId: string;
+  strength: number;
+  effectiveStrength: number;
+  status: 'ACTIVE' | 'EXPIRED';
+  decayed: boolean;
+  countedExchanges: number;
+  createdAt: string;
+  lastExchangeAt: string;
+  explanation: string;
+}
+
+export interface TrustUpdateView {
+  id: string;
+  relationshipId: string;
+  exchangeId: string;
+  exchangeDeliverable?: string;
+  members: [MemberSummary, MemberSummary];
+  previousStrength: number;
+  newStrength: number;
+  applied: boolean;
+  reason: string;
+  relationshipTrustBefore: number | null;
+  relationshipTrustAfter: number | null;
+  ruleId: string;
+  createdAt: string;
+}
+
 export interface GraphView {
   nodes: (MemberSummary & { connected: boolean; componentSize: number })[];
   edges: EdgeView[];
+  earnedEdges: EarnedEdgeView[];
   rules: { decayAfterMonths: number; decayFactor: number; expireAfterMonths: number; undirectedNote: string };
   now: string;
 }
@@ -76,7 +117,12 @@ export interface GraphView {
 export interface PathStep {
   from: MemberSummary;
   to: MemberSummary;
-  edge: EdgeView;
+  /** Vouch between the two (null if they are linked only by an earned relationship). */
+  edge: EdgeView | null;
+  earned: EarnedEdgeView | null;
+  /** Combined pair strength used on the path: 1 − (1 − vouch)(1 − earned). */
+  strength: number;
+  kind: 'vouch' | 'earned' | 'both';
   /** true when the walk follows voucher -> vouchee; false when it walks the edge backwards. */
   forward: boolean;
 }
@@ -90,6 +136,8 @@ export interface PathResult {
   calculation: string;
   explanation: string;
   tieBreak: string;
+  /** Fewest hops over active vouches only (navigation / attestor distance), independent of strength. */
+  fewestVouchHops?: number | null;
 }
 
 export interface ListingView {
@@ -106,7 +154,69 @@ export interface ListingView {
   requiredSkills: string[];
   status: ListingStatus;
   createdAt: string;
+  trustTier: TrustTier;
+  minCredibility: number | null;
+  minRelationshipTrust: number | null;
+  maxCreditBudget: number | null;
   reachability?: { reachable: boolean; hops: number | null; strength: number | null };
+  /** For requests by others: can the viewer take this task (computed by the eligibility module). */
+  eligibility?: TaskEligibilityView | null;
+  /** Price estimate from the pricing module (provider = owner for offers, viewer for requests). */
+  priceEstimate?: PriceBreakdown | null;
+}
+
+export interface EligibilityCheck {
+  key: 'memberActive' | 'credibility' | 'relationshipTrust' | 'verifiedContact' | 'ownerApproval';
+  label: string;
+  passed: boolean;
+  /** Owner approval can be pending without the member being locked out. */
+  pending?: boolean;
+  required: string;
+  current: string;
+  explanation: string;
+}
+
+export interface TaskEligibilityView {
+  tier: TrustTier;
+  tierLabel: string;
+  tierExamples: string;
+  /** All checks pass (including owner approval when it is evaluated). */
+  eligible: boolean;
+  /** A member requirement fails (score, relationship trust, verification). Owner approval alone never locks. */
+  locked: boolean;
+  requiredCredibility: number;
+  currentCredibility: number;
+  requirementSources: { tierMinimum: number; categoryMinimum: number; requesterMinimum: number | null };
+  requiredRelationshipTrust: number | null;
+  currentRelationshipTrust: number | null;
+  checks: EligibilityCheck[];
+  conditions: string[];
+  howToBecomeEligible: string[];
+  summary: string;
+}
+
+export interface PriceBreakdown {
+  durationMinutes: number;
+  baseCredits: number;
+  skill: { tier: SkillTier; multiplierPct: number; source: 'default' | 'peer-reviewed'; reason: string };
+  demand: {
+    multiplierPct: number;
+    status: 'APPLIED' | 'INSUFFICIENT_DATA' | 'WAITING_FOR_PROVIDER';
+    reason: string;
+    inputs: { uniqueActiveRequests: number; availableProviders: number; ratio: number | null; windowDays: number; excludedExpired: number; excludedDuplicates: number };
+  };
+  serviceCredits: number;
+  giftBonus: number;
+  total: number;
+  maxCreditBudget: number | null;
+  withinBudget: boolean;
+  formula: string;
+  calculation: string;
+  rounding: string;
+  quotedAt: string;
+  lockedAt: string | null;
+  policyVersion: string;
+  legacy?: boolean;
 }
 
 export interface ReservationView {
@@ -164,6 +274,14 @@ export interface ExchangeView {
   partialProposedById: string | null;
   partialNote: string | null;
   createdAt: string;
+  trustTier: TrustTier;
+  minCredibility: number | null;
+  minRelationshipTrust: number | null;
+  maxCreditBudget: number | null;
+  homeAccess: { required: boolean; approved: boolean; approvedAt: string | null };
+  /** Quote (before acceptance) or locked snapshot (after). Legacy exchanges get a 1h = 1 credit breakdown. */
+  pricing: PriceBreakdown | null;
+  priceLocked: boolean;
   reservation: ReservationView | null;
   disputeId: string | null;
   /** Backend-computed list of actions available to the viewer, with reasons for blocked ones. */
@@ -236,12 +354,17 @@ export interface EligibilityRow {
   reasons: string[];
   distanceToParties: { [memberId: string]: number | null };
   score: number;
+  /** Relationship trust (strongest path) to each party, and closeness = the max of the two. */
+  closeness: { toParties: { [memberId: string]: number }; value: number } | null;
+  rank: number | null;
+  selectionReason: string | null;
 }
 
 export interface AttestorSelectionView {
   id: string;
   round: number;
   seed: string;
+  method: string;
   requiredCount: number;
   sufficient: boolean;
   selected: MemberSummary[];
@@ -253,6 +376,7 @@ export interface AssignmentView {
   id: string;
   round: number;
   attestor: MemberSummary;
+  selectionReason: string | null;
   status: AssignmentStatus;
   vote: VoteChoice | null;
   reason: string | null;
@@ -337,4 +461,101 @@ export interface DemoGuideStep {
   actAs: string | null;
   instruction: string;
   where: string;
+}
+
+export interface SkillTierView {
+  category: string;
+  tier: SkillTier;
+  multiplierPct: number;
+  source: 'default' | 'peer-reviewed';
+  reason: string;
+}
+
+export interface SkillClaimView {
+  id: string;
+  member: MemberSummary;
+  category: string;
+  tier: SkillTier;
+  evidence: string;
+  status: 'PENDING' | 'APPROVED' | 'DECLINED';
+  requiredApprovals: number;
+  approvals: number;
+  reviews: { reviewer: MemberSummary; approve: boolean; note: string; createdAt: string }[];
+  /** Evidence from records shown to reviewers. */
+  record: { settledServices: number; nonperformanceFindings: number };
+  createdAt: string;
+  decidedAt: string | null;
+  canReview: boolean;
+  cannotReviewReason: string | null;
+}
+
+export interface VerificationStatus {
+  /** DEMO_VERIFIED: demo mode only — the code was shown in an on-screen preview, not delivered by email. */
+  status: 'VERIFIED' | 'DEMO_VERIFIED' | 'UNVERIFIED' | 'NOT_PROVIDED' | 'UNAVAILABLE';
+  verifiedAt: string | null;
+  note: string;
+}
+
+/** Profile with privacy applied for the viewer. selfReported is never shown as verified. */
+export interface ProfileView {
+  member: MemberSummary;
+  isMe: boolean;
+  selfReported: {
+    displayName: string;
+    photoUrl: string | null;
+    intro: string;
+    affiliation: string;
+    neighborhood: string;
+    languages: string[];
+    skills: string[];
+    availability: string;
+  };
+  verification: { email: VerificationStatus; phone: VerificationStatus };
+  fromRecords: {
+    joinedAt: string;
+    completedServiceCount: number;
+    credibility: { score: number; factors: CredibilityFactor[] };
+    skillTiers: SkillTierView[];
+  };
+  /** Only for the member themselves, or exchange partners when sharing is enabled. */
+  contact: { email: string | null; phone: string | null; visibility: string } | null;
+  /** Only for the member themselves. */
+  private: { loginEmail: string; homeAddress: string | null; shareContactWithPartners: boolean; juryAvailable: boolean } | null;
+  privacyNote: string;
+}
+
+export interface NotificationView {
+  id: string;
+  kind: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  link: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  read: boolean;
+  createdAt: string;
+  email: { status: EmailStatus; provider: string } | null;
+}
+
+export interface EmailOutboxView {
+  id: string;
+  toAddress: string;
+  subject: string;
+  body: string;
+  status: EmailStatus;
+  provider: string;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+export interface NotificationPreferences {
+  emailEnabled: boolean;
+  categories: NotificationCategory[];
+  allCategories: { key: NotificationCategory; label: string }[];
+  address: string | null;
+  addressVerified: boolean;
+  delivery: { mode: 'preview' | 'smtp' | 'disabled'; note: string };
 }

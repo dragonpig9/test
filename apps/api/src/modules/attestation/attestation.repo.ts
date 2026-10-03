@@ -5,7 +5,7 @@ import { notFound } from '../../core/errors';
 import { timelineFor } from '../audit/audit.repo';
 import { getExchange, toExchangeView } from '../exchanges/exchange.repo';
 import { toSummary } from '../members/member.repo';
-import type { EligibilityRow } from './attestation.eligibility';
+import { SELECTED_REASON, type EligibilityRow } from './attestation.eligibility';
 import { INDEPENDENCE_NOTE } from './attestation.service';
 
 export async function disputeView(db: Db, id: string, viewerId: string, now: Date): Promise<DisputeView> {
@@ -22,10 +22,16 @@ export async function disputeView(db: Db, id: string, viewerId: string, now: Dat
   if (!d) throw notFound('attestation', 'Dispute');
   const ex = await getExchange(db, d.exchangeId);
   const members = new Map((await db.member.findMany()).map((m) => [m.id, m]));
+  const reasonFor = (round: number, attestorId: string) => {
+    const sel = d.selections.filter((s) => s.round === round && s.selectedIds.includes(attestorId)).pop();
+    const row = sel ? (sel.candidates as unknown as EligibilityRow[]).find((c) => c.memberId === attestorId) : undefined;
+    return row?.selectionReason ?? (sel ? SELECTED_REASON : null);
+  };
   const assignments = d.assignments.map((a) => ({
     id: a.id,
     round: a.round,
     attestor: toSummary(a.attestor),
+    selectionReason: reasonFor(a.round, a.attestorId),
     status: a.status,
     vote: a.vote,
     reason: a.reason,
@@ -78,6 +84,7 @@ export async function disputeView(db: Db, id: string, viewerId: string, now: Dat
       id: s.id,
       round: s.round,
       seed: s.seed,
+      method: s.method,
       requiredCount: s.requiredCount,
       sufficient: s.sufficient,
       selected: s.selectedIds.map((sid) => toSummary(members.get(sid)!)),
@@ -88,6 +95,9 @@ export async function disputeView(db: Db, id: string, viewerId: string, now: Dat
           reasons: c.reasons,
           distanceToParties: c.distances,
           score: c.score,
+          closeness: c.closeness ?? null,
+          rank: c.rank ?? null,
+          selectionReason: c.selectionReason ?? null,
         }),
       ),
       createdAt: s.createdAt.toISOString(),

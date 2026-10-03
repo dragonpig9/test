@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { createListingSchema, SERVICE_CATEGORIES } from '@commonhours/shared';
 import { prisma, withTx } from '../../core/db';
+import { AppError } from '../../core/errors';
 import { actorId, ah, parseBody } from '../../core/http';
-import { loadTrust, reachFrom } from '../trust/trust.service';
-import { createListing, discoverListings, getListing, toListingView, withdrawListing } from './listing.service';
+import { createListing, discoverListings, toListingView, withdrawListing } from './listing.service';
 
 export const listingsRouter = Router();
 const M = 'services';
@@ -28,9 +28,10 @@ listingsRouter.get(
   '/:id',
   ah(async (req, res) => {
     const me = actorId(req, M);
-    const l = await getListing(prisma, req.params.id);
-    const r = reachFrom(await loadTrust(prisma, req.ctx.now), me).get(l.ownerId);
-    res.json({ listing: { ...toListingView(l), reachability: { reachable: !!r, hops: r?.hops ?? null, strength: r?.strength ?? null } } });
+    const all = await discoverListings(prisma, me, req.ctx.now, {});
+    const l = all.find((x) => x.id === req.params.id);
+    if (!l) throw new AppError('NOT_FOUND', 'Listing was not found or is no longer open.', M);
+    res.json({ listing: l });
   }),
 );
 

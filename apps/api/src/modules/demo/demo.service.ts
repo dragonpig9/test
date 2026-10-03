@@ -6,6 +6,7 @@ import { prisma, type Tx } from '../../core/db';
 import { recordAudit } from '../audit/audit.service';
 import { sweepVoteDeadlines } from '../attestation/attestation.service';
 import { refreshCredibility } from '../credibility/credibility.service';
+import { sweepReminders } from '../notifications/notification.reminders';
 import { runCreditExpiry } from '../expiry/expiry.service';
 import { expireStaleVouches } from '../vouches/vouch.service';
 import { DEMO_NOW, seedDemo } from './demo.seed';
@@ -39,14 +40,16 @@ export async function advanceClock(tx: Tx, ctx: Ctx, days: number) {
   const disputes = await sweepVoteDeadlines(tx, c2);
   const ids = (await tx.member.findMany({ select: { id: true } })).map((m) => m.id);
   await refreshCredibility(tx, c2, ids, `clock advanced ${days} day(s)`);
-  return { now: after, expiredVouches: vouches, expiredCredits: credits, disputesNeedingReview: disputes };
+  const reminders = await sweepReminders(tx, c2);
+  return { now: after, expiredVouches: vouches, expiredCredits: credits, disputesNeedingReview: disputes, reminders };
 }
 
 export async function runSweeps(tx: Tx, ctx: Ctx) {
   const vouches = await expireStaleVouches(tx, ctx);
   const credits = await runCreditExpiry(tx, ctx);
   const disputes = await sweepVoteDeadlines(tx, ctx);
-  return { expiredVouches: vouches, expiredCredits: credits, disputesNeedingReview: disputes };
+  const reminders = await sweepReminders(tx, ctx);
+  return { expiredVouches: vouches, expiredCredits: credits, disputesNeedingReview: disputes, reminders };
 }
 
 /** Next-step guide computed from database state (not from UI clicks). */

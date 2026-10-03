@@ -7,6 +7,7 @@ import { AppError, forbidden, notFound } from '../../core/errors';
 import { recordAudit } from '../audit/audit.service';
 import { assertThreshold, refreshCredibility } from '../credibility/credibility.service';
 import { assertCanCommit } from '../members/member.repo';
+import { notify } from '../notifications/notification.events';
 import { effectiveEdge, maxPenaltyPoints, nextStrengthUp, refreshedExpiry } from './vouch.rules';
 
 const MODULE = 'vouches';
@@ -111,6 +112,19 @@ export async function proposeVouch(tx: Tx, ctx: Ctx, voucherId: string, input: P
     ruleId: RULES.VOUCH_PROPOSE,
     summary: `Vouch proposed for ${vouchee.displayName}; waiting for their consent`,
   });
+  const voucher = await tx.member.findUniqueOrThrow({ where: { id: voucherId } });
+  notify({
+    memberId: vouchee.id,
+    kind: 'vouch.requested',
+    category: 'invitations',
+    title: `${voucher.displayName} wants to vouch for you`,
+    body: `Strength ${v.strength}, liability ${v.liabilityPct}% (their maximum penalty ${maxPenaltyPoints(v.liabilityPct)} points). It only becomes active if you accept.`,
+    link: '/trust?tab=vouches',
+    entityType: 'VOUCH',
+    entityId: v.id,
+    dedupeKey: `vouch.requested:${v.id}`,
+    at: ctx.now,
+  });
   return v;
 }
 
@@ -142,6 +156,18 @@ export async function respondToVouch(tx: Tx, ctx: Ctx, vouchId: string, memberId
     reason: accept ? 'Vouchee consented to the vouch terms.' : 'Vouchee declined.',
     ruleId: RULES.VOUCH_ACCEPT,
     summary: `${v.vouchee.displayName} ${accept ? 'accepted' : 'declined'} ${v.voucher.displayName}'s vouch`,
+  });
+  notify({
+    memberId: v.voucherId,
+    kind: accept ? 'vouch.accepted' : 'vouch.declined',
+    category: 'invitations',
+    title: `${v.vouchee.displayName} ${accept ? 'accepted' : 'declined'} your vouch`,
+    body: accept ? `Your vouch (strength ${v.strength}, liability ${v.liabilityPct}%) is now active.` : 'Nothing changed; no liability applies.',
+    link: '/trust?tab=vouches',
+    entityType: 'VOUCH',
+    entityId: v.id,
+    dedupeKey: `vouch.responded:${v.id}`,
+    at: ctx.now,
   });
   if (accept) await refreshCredibility(tx, ctx, [v.voucheeId], 'new incoming vouch');
   return updated;
@@ -240,6 +266,19 @@ export async function proposeAmendment(tx: Tx, ctx: Ctx, vouchId: string, member
     reason: 'Amendment requires the counterparty’s consent.',
     ruleId: RULES.VOUCH_AMEND,
     summary: `Amendment proposed: strength ${v.strength}→${input.strength}, liability ${v.liabilityPct}%→${input.liabilityPct}%`,
+  });
+  const proposer = memberId === v.voucherId ? v.voucher : v.vouchee;
+  notify({
+    memberId: memberId === v.voucherId ? v.voucheeId : v.voucherId,
+    kind: 'vouch.amendment_requested',
+    category: 'invitations',
+    title: `${proposer.displayName} proposed a change to your vouch`,
+    body: `Strength ${v.strength} → ${input.strength}, liability ${v.liabilityPct}% → ${input.liabilityPct}%. Nothing changes unless you accept.`,
+    link: '/trust?tab=vouches',
+    entityType: 'VOUCH',
+    entityId: v.id,
+    dedupeKey: `vouch.amendment:${a.id}`,
+    at: ctx.now,
   });
   return a;
 }

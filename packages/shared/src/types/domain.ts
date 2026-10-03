@@ -20,3 +20,7 @@ export type DisputeOutcome = 'CONFIRMED' | 'REFUTED';
 export type DisputeCondition = 'DELIVERABLE' | 'DURATION' | 'PUNCTUALITY' | 'NO_SHOW';
 export type VoteChoice = 'CONFIRMED' | 'REFUTED' | 'UNCLEAR';
 export type AssignmentStatus = 'ASSIGNED' | 'VOTED' | 'RECUSED' | 'MISSED' | 'NOT_NEEDED';
+export type TrustTier = 'STANDARD' | 'RESTRICTED' | 'HIGH_TRUST';
+export type SkillTier = 'STANDARD' | 'SKILLED' | 'ADVANCED' | 'SPECIALIST';
+export type EmailStatus = 'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | 'PREVIEW' | 'SKIPPED';
+export type NotificationCategory = 'invitations' | 'exchanges' | 'reminders' | 'credits' | 'trust' | 'disputes' | 'jury';

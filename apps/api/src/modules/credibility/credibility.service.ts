@@ -5,6 +5,8 @@ import type { Ctx } from '../../core/context';
 import type { Db, Tx } from '../../core/db';
 import { AppError } from '../../core/errors';
 import { recordAudit } from '../audit/audit.service';
+import { notify } from '../notifications/notification.events';
+import { tierPermissions } from '../task-eligibility/eligibility.rules';
 import { outgoingCommitmentCount } from '../vouches/vouch.service';
 import { gatherInputs } from './credibility.repo';
 import { DISCLAIMER, FORMULA_TEXT, computeScore, permissionsFor, type CredibilityResult } from './credibility.rules';
@@ -26,7 +28,7 @@ export async function bootstrapWaiverActive(db: Db): Promise<boolean> {
 export async function permissionsOf(db: Db, memberId: string, now: Date, score?: number): Promise<PermissionCheck[]> {
   const s = score ?? (await scoreOf(db, memberId, now));
   const [waiver, used] = await Promise.all([bootstrapWaiverActive(db), outgoingCommitmentCount(db, memberId, now)]);
-  return permissionsFor(s, { bootstrapWaiver: waiver, vouchSlotsLeft: POLICY.vouches.maxActiveOutgoing - used });
+  return [...permissionsFor(s, { bootstrapWaiver: waiver, vouchSlotsLeft: POLICY.vouches.maxActiveOutgoing - used }), ...tierPermissions(s)];
 }
 
 /**
@@ -38,9 +40,28 @@ export async function refreshCredibility(tx: Tx, ctx: Ctx, memberIds: string[], 
     const result = await computeCredibility(tx, memberId, ctx.now);
     const last = await tx.credibilitySnapshot.findFirst({ where: { memberId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
     if (last && Math.abs(last.score - result.score) < 0.05) continue;
-    await tx.credibilitySnapshot.create({
+    const snap = await tx.credibilitySnapshot.create({
       data: { memberId, score: result.score, breakdown: JSON.parse(JSON.stringify(result.factors)), reason, createdAt: ctx.now },
     });
+    // Newly unlocked task tiers (eligibility is recomputed from the score on every request).
+    if (last) {
+      for (const [tier, t] of Object.entries(POLICY.taskEligibility.tiers)) {
+        if (t.minCredibility > 0 && last.score < t.minCredibility && result.score >= t.minCredibility) {
+          notify({
+            memberId,
+            kind: 'tasks.unlocked',
+            category: 'trust',
+            title: `${t.label} tasks unlocked`,
+            body: `Your credibility rose from ${last.score} to ${result.score} (≥ ${t.minCredibility}), so you can now take ${t.label.toLowerCase()} tasks (${t.examples.toLowerCase()}).${t.requireOwnerApproval ? ' Each one still needs a verified contact method and the owner’s explicit approval.' : ''}`,
+            link: '/services',
+            entityType: 'CREDIBILITY',
+            entityId: memberId,
+            dedupeKey: `tasks.unlocked:${memberId}:${tier}:${snap.id}`,
+            at: ctx.now,
+          });
+        }
+      }
+    }
     await recordAudit(tx, ctx, {
       module: 'credibility',
       action: 'credibility.recomputed',

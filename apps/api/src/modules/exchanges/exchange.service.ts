@@ -1,5 +1,5 @@
-import type { Exchange, ExchangeStatus, Prisma } from '@prisma/client';
-import { formatCredits, type ExchangeTermsInput, type ProposeExchangeInput } from '@commonhours/shared';
+import type { Exchange, ExchangeStatus, Member, Prisma, TrustTier } from '@prisma/client';
+import { formatCredits, type ExchangeTermsInput, type PriceBreakdown, type ProposeExchangeInput } from '@commonhours/shared';
 import { POLICY, RULES } from '../../config/policy';
 import type { Ctx } from '../../core/context';
 import { lockRow, type Tx } from '../../core/db';
@@ -9,12 +9,17 @@ import { recordAudit } from '../audit/audit.service';
 import { refreshCredibility, scoreOf } from '../credibility/credibility.service';
 import { freezeReservation, releaseReservation, reserveCredits, settleReservation } from '../ledger/ledger.service';
 import { assertCanCommit, getMember } from '../members/member.repo';
+import { notify } from '../notifications/notification.events';
+import { quoteFor } from '../pricing/pricing.service';
 import { getListing } from '../services/listing.service';
-import { isRestrictedCategory, listingRoles } from '../services/listing.rules';
+import { listingRoles } from '../services/listing.rules';
+import { assertRequesterRequirements } from '../task-eligibility/eligibility.rules';
+import { assertTaskEligible, auditHomeAccess, homeAccessApproved } from '../task-eligibility/eligibility.service';
+import { recordEarnedTrust } from '../trust/trust.earned';
 import { liabilitySnapshot, recordQualifyingInteraction, strongestIncomingVouch } from '../vouches/vouch.service';
 import { getExchange } from './exchange.repo';
 import { exchangeMachine } from './exchange.state';
-import { cancellationCutoff, confirmationDeadline, describeTerms, isDue, roleOf, standardCredits } from './exchange.rules';
+import { cancellationCutoff, confirmationDeadline, describeTerms, isDue, roleOf } from './exchange.rules';
 
 const MODULE = 'exchanges';
 const c = formatCredits;
@@ -27,11 +32,51 @@ function termsSnapshot(ex: Exchange) {
     punctualityRequired: ex.punctualityRequired,
     creditAmount: ex.creditAmount,
     giftBonus: ex.giftBonus,
+    baseCredits: ex.baseCredits,
+    skillMultiplierPct: ex.skillMultiplierPct,
+    demandMultiplierPct: ex.demandMultiplierPct,
+    maxCreditBudget: ex.maxCreditBudget,
+    trustTier: ex.trustTier,
+    minCredibility: ex.minCredibility,
+    minRelationshipTrust: ex.minRelationshipTrust,
     cancellationNoticeHours: ex.cancellationNoticeHours,
     confirmationDeadline: ex.confirmationDeadline,
     termsVersion: ex.termsVersion,
     status: ex.status,
   };
+}
+
+const TIER_RANK: Record<TrustTier, number> = { STANDARD: 0, RESTRICTED: 1, HIGH_TRUST: 2 };
+
+/** undefined = not sent → use the fallback; null = explicitly cleared. */
+const keep = <T>(v: T | null | undefined, fallback: T | null): T | null => (v === undefined ? fallback : v);
+
+/** Notification for the other party of an exchange (dedupe key = event + exchange + version + recipient). */
+function tell(ctx: Ctx, ex: Pick<Exchange, 'id' | 'deliverable'>, to: Pick<Member, 'id'>, kind: string, category: 'exchanges' | 'reminders' | 'credits', title: string, body: string, dedupe: string) {
+  notify({ memberId: to.id, kind, category, title, body, link: `/exchanges/${ex.id}`, entityType: 'EXCHANGE', entityId: ex.id, dedupeKey: `${kind}:${ex.id}:${dedupe}:${to.id}`, at: ctx.now });
+}
+
+/** Pricing columns for a fresh quote (the quote is part of the terms both parties accept). */
+function priceData(q: PriceBreakdown) {
+  return {
+    creditAmount: q.serviceCredits,
+    baseCredits: q.baseCredits,
+    skillTier: q.skill.tier,
+    skillMultiplierPct: q.skill.multiplierPct,
+    demandMultiplierPct: q.demand.multiplierPct,
+    pricingQuote: JSON.parse(JSON.stringify(q)) as Prisma.InputJsonValue,
+  };
+}
+
+function assertBudget(q: PriceBreakdown) {
+  if (!q.withinBudget) {
+    throw new AppError(
+      'BUDGET_EXCEEDED',
+      `This would cost ${c(q.total)} credits (${q.calculation}), above the requester's maximum budget of ${c(q.maxCreditBudget ?? 0)}. Shorten the service, remove the gift, or raise the budget.`,
+      MODULE,
+      { quote: q },
+    );
+  }
 }
 
 /**
@@ -104,7 +149,26 @@ export async function proposeExchange(tx: Tx, ctx: Ctx, proposerId: string, inpu
   if (input.giftBonus > 0 && recipientId !== proposerId) {
     throw new AppError('GIFT_ONLY_FROM_RECIPIENT', 'Only the person receiving the service can offer a gift bonus.', MODULE);
   }
-  await assertProviderMayProvide(tx, ctx, providerId, input.category);
+  // Access level, minimums and budget belong to the recipient (whose home/task it is).
+  const listing = input.listingId ? await getListing(tx, input.listingId) : null;
+  // Omitted fields inherit from the listing (if any); only the recipient may set them.
+  const req =
+    recipientId === proposerId
+      ? {
+          trustTier: input.trustTier ?? listing?.trustTier ?? ('STANDARD' as TrustTier),
+          minCredibility: keep(input.minCredibility, listing?.minCredibility ?? null),
+          minRelationshipTrust: keep(input.minRelationshipTrust, listing?.minRelationshipTrust ?? null),
+          maxCreditBudget: keep(input.maxCreditBudget, listing?.maxCreditBudget ?? null),
+        }
+      : listing
+        ? { trustTier: listing.trustTier, minCredibility: listing.minCredibility, minRelationshipTrust: listing.minRelationshipTrust, maxCreditBudget: listing.maxCreditBudget }
+        : { trustTier: 'STANDARD' as TrustTier, minCredibility: null, minRelationshipTrust: null, maxCreditBudget: null };
+  if (listing && TIER_RANK[req.trustTier] < TIER_RANK[listing.trustTier]) {
+    throw new AppError('REQUIREMENT_TOO_LOW', `This listing is a ${listing.trustTier.toLowerCase().replace('_', '-')} task; the exchange cannot use a lower access level.`, MODULE);
+  }
+  assertRequesterRequirements(req.trustTier, input.category, req.minCredibility, MODULE);
+  const quote = await quoteFor(tx, { providerId, category: input.category, durationMinutes: input.durationMinutes, giftBonus: input.giftBonus, maxCreditBudget: req.maxCreditBudget }, ctx.now);
+  assertBudget(quote);
   if (input.linkedExchangeId) {
     const linked = await getExchange(tx, input.linkedExchangeId);
     const pair = new Set([linked.providerId, linked.recipientId]);
@@ -123,7 +187,8 @@ export async function proposeExchange(tx: Tx, ctx: Ctx, proposerId: string, inpu
       scheduledAt,
       location: input.location,
       punctualityRequired: input.punctualityRequired,
-      creditAmount: standardCredits(input.durationMinutes),
+      ...priceData(quote),
+      ...req,
       giftBonus: input.giftBonus,
       cancellationNoticeHours: input.cancellationNoticeHours,
       cancellationTerms: input.cancellationTerms,
@@ -138,32 +203,30 @@ export async function proposeExchange(tx: Tx, ctx: Ctx, proposerId: string, inpu
   if (input.linkedExchangeId) {
     await tx.exchange.updateMany({ where: { id: input.linkedExchangeId, linkedExchangeId: null }, data: { linkedExchangeId: ex.id } });
   }
+  // A provider proposing must already meet the task's member requirements (approval comes later).
+  if (providerId === proposerId) await assertTaskEligible(tx, ctx, ex, { requireApproval: false, stage: 'offer to do' });
   await recordAudit(tx, ctx, {
     module: MODULE,
     action: 'exchange.proposed',
     entityType: 'EXCHANGE',
     entityId: ex.id,
     after: termsSnapshot(ex),
-    reason: `Proposer accepted terms v1. ${describeTerms(ex)}`,
+    reason: `Proposer accepted terms v1. ${describeTerms(ex)} Price quote: ${quote.calculation}.`,
     ruleId: RULES.EXCHANGE_TERMS,
     summary: `${proposer.displayName} proposed: ${ex.deliverable} (${c(ex.creditAmount)} credit(s)${ex.giftBonus ? ` + ${c(ex.giftBonus)} gift` : ''})${input.linkedExchangeId ? ' — linked to a reciprocal exchange' : ''}`,
   });
+  await recordAudit(tx, ctx, {
+    module: 'pricing',
+    action: 'pricing.quoted',
+    entityType: 'EXCHANGE',
+    entityId: ex.id,
+    after: quote,
+    reason: `${quote.skill.reason} ${quote.demand.reason}`,
+    ruleId: RULES.PRICING_QUOTE,
+    summary: `Price quote v1: ${quote.calculation}`,
+  });
+  tell(ctx, ex, other, 'exchange.proposed', 'exchanges', `${proposer.displayName} proposed an exchange: “${ex.deliverable}”`, `${c(quote.total)} credit(s) (${quote.calculation}). Review the terms and accept or decline.`, 'v1');
   return ex;
-}
-
-async function assertProviderMayProvide(tx: Tx, ctx: Ctx, providerId: string, category: string) {
-  if (!isRestrictedCategory(category)) return;
-  const score = await scoreOf(tx, providerId, ctx.now);
-  const th = POLICY.credibility.thresholds.restrictedCategory;
-  if (score < th) {
-    const p = await getMember(tx, providerId);
-    throw new AppError(
-      'CATEGORY_RESTRICTED',
-      `${p.displayName} cannot provide "${category}" yet: it requires credibility ≥ ${th} (current ${score}). This is a community safeguard, not a qualification check.`,
-      MODULE,
-      { threshold: th, current: score },
-    );
-  }
 }
 
 /**
@@ -181,7 +244,24 @@ export async function updateTerms(tx: Tx, ctx: Ctx, id: string, memberId: string
   if (role === 'provider' && input.giftBonus !== ex.giftBonus) {
     throw new AppError('GIFT_ONLY_FROM_RECIPIENT', 'Only the recipient can set or change the gift bonus.', MODULE);
   }
+  // Omitted fields keep their current values.
+  const req = {
+    trustTier: input.trustTier ?? ex.trustTier,
+    minCredibility: keep(input.minCredibility, ex.minCredibility),
+    minRelationshipTrust: keep(input.minRelationshipTrust, ex.minRelationshipTrust),
+    maxCreditBudget: keep(input.maxCreditBudget, ex.maxCreditBudget),
+  };
+  if (role === 'provider' && (req.trustTier !== ex.trustTier || req.minCredibility !== ex.minCredibility || req.minRelationshipTrust !== ex.minRelationshipTrust || req.maxCreditBudget !== ex.maxCreditBudget)) {
+    throw forbidden(MODULE, 'Only the recipient (whose home or task it is) can change the access level, minimum requirements or budget.');
+  }
+  const listing = ex.listingId ? await tx.listing.findUnique({ where: { id: ex.listingId } }) : null;
+  if (listing && TIER_RANK[req.trustTier] < TIER_RANK[listing.trustTier]) {
+    throw new AppError('REQUIREMENT_TOO_LOW', `This listing is a ${listing.trustTier.toLowerCase().replace('_', '-')} task; the exchange cannot use a lower access level.`, MODULE);
+  }
+  assertRequesterRequirements(req.trustTier, ex.category, req.minCredibility, MODULE);
   const scheduledAt = validateTerms(ctx, input);
+  const quote = await quoteFor(tx, { providerId: ex.providerId, category: ex.category, durationMinutes: input.durationMinutes, giftBonus: input.giftBonus, maxCreditBudget: req.maxCreditBudget }, ctx.now);
+  assertBudget(quote);
   const updated = await tx.exchange.update({
     where: { id },
     data: {
@@ -190,7 +270,8 @@ export async function updateTerms(tx: Tx, ctx: Ctx, id: string, memberId: string
       scheduledAt,
       location: input.location,
       punctualityRequired: input.punctualityRequired,
-      creditAmount: standardCredits(input.durationMinutes),
+      ...priceData(quote),
+      ...req,
       giftBonus: input.giftBonus,
       cancellationNoticeHours: input.cancellationNoticeHours,
       cancellationTerms: input.cancellationTerms,
@@ -208,11 +289,32 @@ export async function updateTerms(tx: Tx, ctx: Ctx, id: string, memberId: string
     entityId: id,
     before: termsSnapshot(ex),
     after: termsSnapshot(updated),
-    reason: `New terms version ${updated.termsVersion}; the other party must accept again. ${describeTerms(updated)}`,
+    reason: `New terms version ${updated.termsVersion}; the other party must accept again (and any home-access approval must be given again). ${describeTerms(updated)} Price quote: ${quote.calculation}.`,
     ruleId: RULES.EXCHANGE_TERMS,
     summary: `Terms updated to v${updated.termsVersion}`,
   });
+  const other = role === 'provider' ? ex.recipient : ex.provider;
+  tell(ctx, ex, other, 'exchange.terms_changed', 'exchanges', `Terms changed for “${ex.deliverable}”`, `New terms version ${updated.termsVersion}: ${c(quote.total)} credit(s). Review and accept again.`, `v${updated.termsVersion}`);
   return updated;
+}
+
+/**
+ * Explicit home-access approval for a HIGH_TRUST exchange, by the recipient (the owner), for the
+ * current terms version only. Being eligible never implies this approval.
+ */
+export async function approveHomeAccess(tx: Tx, ctx: Ctx, id: string, memberId: string, termsVersion: number) {
+  const ex = await lockedExchange(tx, id);
+  if (ex.recipientId !== memberId) throw forbidden(MODULE, 'Only the home owner (the recipient) can approve home access.');
+  if (ex.trustTier !== 'HIGH_TRUST') throw new AppError('VALIDATION_FAILED', 'Home-access approval is only needed for high-trust tasks.', MODULE);
+  if (ex.status !== 'PROPOSED') throw new AppError('INVALID_TRANSITION', `Approval is given before acceptance (this exchange is ${ex.status}).`, MODULE);
+  if (termsVersion !== ex.termsVersion) {
+    throw new AppError('TERMS_VERSION_MISMATCH', `The terms changed (now version ${ex.termsVersion}). Review them before approving home access.`, MODULE, { expected: ex.termsVersion, received: termsVersion });
+  }
+  if (homeAccessApproved(ex)) throw new AppError('ALREADY_DONE', 'You already approved home access for this terms version.', MODULE, undefined, 409);
+  const u = await tx.exchange.update({ where: { id }, data: { homeAccessApprovedAt: ctx.now, homeAccessApprovedVersion: ex.termsVersion, updatedAt: ctx.now } });
+  await auditHomeAccess(tx, ctx, u, ex.recipient.displayName, ex.provider.displayName);
+  tell(ctx, ex, ex.provider, 'exchange.home_access_approved', 'exchanges', `${ex.recipient.displayName} approved home access for “${ex.deliverable}”`, 'The owner explicitly approved entry for this exchange and terms version. The address is shown on the exchange once both have accepted.', `v${ex.termsVersion}`);
+  return u;
 }
 
 export async function acceptExchange(tx: Tx, ctx: Ctx, id: string, memberId: string, termsVersion: number) {
@@ -235,6 +337,7 @@ export async function acceptExchange(tx: Tx, ctx: Ctx, id: string, memberId: str
     throw new AppError('ALREADY_DONE', 'You already accepted these terms; waiting for the other member.', MODULE, undefined, 409);
   }
   if (!providerAcceptedAt || !recipientAcceptedAt) {
+    if (role === 'provider') await assertTaskEligible(tx, ctx, ex, { requireApproval: false, stage: 'accept' });
     const u = await tx.exchange.update({ where: { id }, data: { providerAcceptedAt, recipientAcceptedAt, updatedAt: ctx.now } });
     await recordAudit(tx, ctx, {
       module: MODULE,
@@ -247,10 +350,17 @@ export async function acceptExchange(tx: Tx, ctx: Ctx, id: string, memberId: str
       ruleId: RULES.EXCHANGE_ACCEPT,
       summary: `${role} accepted terms v${ex.termsVersion}`,
     });
+    const other = role === 'provider' ? ex.recipient : ex.provider;
+    tell(ctx, ex, other, 'exchange.terms_accepted', 'exchanges', `${role === 'provider' ? ex.provider.displayName : ex.recipient.displayName} accepted “${ex.deliverable}” — your turn`, `They accepted terms v${ex.termsVersion}. Credits are reserved when you accept too.`, `v${ex.termsVersion}`);
     return u;
   }
-  await assertProviderMayProvide(tx, ctx, ex.providerId, ex.category);
+  // Eligibility (incl. owner approval for high-trust tasks) is enforced BEFORE any reservation.
+  const eligibility = await assertTaskEligible(tx, ctx, ex, { requireApproval: true, stage: 'accept' });
   await assertGuarantor(tx, ctx, ex);
+  const pricing = (ex.pricingQuote as PriceBreakdown | null) ?? null;
+  if (pricing && ex.maxCreditBudget !== null && ex.creditAmount + ex.giftBonus > ex.maxCreditBudget) {
+    throw new AppError('BUDGET_EXCEEDED', `The agreed total ${c(ex.creditAmount + ex.giftBonus)} exceeds the budget ${c(ex.maxCreditBudget)}.`, MODULE);
+  }
   // Reserve credits (credit-floor check under a row lock on the payer's account).
   await reserveCredits(tx, ctx, {
     exchangeId: id,
@@ -261,19 +371,47 @@ export async function acceptExchange(tx: Tx, ctx: Ctx, id: string, memberId: str
     payerName: ex.recipient.displayName,
   });
   const snapshot = await liabilitySnapshot(tx, [ex.providerId, ex.recipientId], ctx.now);
-  return transition(
+  // Price snapshot: the quote both accepted, frozen. Later demand or tier changes never touch it.
+  const locked = pricing ? { ...pricing, lockedAt: ctx.now.toISOString() } : null;
+  const accepted = await transition(
     tx,
     ctx,
     ex,
     'ACCEPTED',
-    { providerAcceptedAt, recipientAcceptedAt, acceptedAt: ctx.now, liabilitySnapshot: snapshot },
+    {
+      providerAcceptedAt,
+      recipientAcceptedAt,
+      acceptedAt: ctx.now,
+      liabilitySnapshot: snapshot,
+      eligibilitySnapshot: JSON.parse(JSON.stringify(eligibility)),
+      ...(locked ? { priceSnapshot: JSON.parse(JSON.stringify(locked)), priceLockedAt: ctx.now } : {}),
+    },
     {
       action: 'exchange.accepted',
-      reason: `Both parties accepted terms v${ex.termsVersion}. ${describeTerms(ex)} Liability snapshot recorded for ${snapshot.length} direct vouch(es).`,
+      reason: `Both parties accepted terms v${ex.termsVersion}. ${describeTerms(ex)} Liability snapshot recorded for ${snapshot.length} direct vouch(es). Eligibility: ${eligibility.summary}`,
       ruleId: RULES.EXCHANGE_ACCEPT,
       summary: `Exchange accepted by both: ${ex.deliverable}`,
     },
   );
+  if (locked) {
+    await recordAudit(tx, ctx, {
+      module: 'pricing',
+      action: 'pricing.locked',
+      entityType: 'EXCHANGE',
+      entityId: ex.id,
+      after: locked,
+      reason: 'Price snapshot stored at acceptance; later demand changes cannot change this exchange.',
+      ruleId: RULES.PRICING_LOCK,
+      summary: `Price locked: ${locked.calculation}`,
+    });
+  }
+  for (const [me, other] of [
+    [ex.provider, ex.recipient],
+    [ex.recipient, ex.provider],
+  ]) {
+    tell(ctx, ex, me, 'exchange.accepted', 'exchanges', `Accepted: “${ex.deliverable}” with ${other.displayName}`, `Both accepted terms v${ex.termsVersion}. ${c(ex.creditAmount + ex.giftBonus)} credit(s) reserved from ${ex.recipient.displayName}. Scheduled ${ex.scheduledAt.toISOString().slice(0, 16).replace('T', ' ')} UTC.`, 'final');
+  }
+  return accepted;
 }
 
 /** Guarantor rule: low-credibility providers need a strong incoming vouch for larger services. */
@@ -297,19 +435,23 @@ export async function declineOrWithdraw(tx: Tx, ctx: Ctx, id: string, memberId: 
   const ex = await lockedExchange(tx, id);
   assertParty(ex, memberId);
   const withdraw = ex.proposerId === memberId;
-  return transition(tx, ctx, ex, withdraw ? 'WITHDRAWN' : 'DECLINED', { closedAt: ctx.now }, {
+  const u = await transition(tx, ctx, ex, withdraw ? 'WITHDRAWN' : 'DECLINED', { closedAt: ctx.now }, {
     action: withdraw ? 'exchange.withdrawn' : 'exchange.declined',
     reason: withdraw ? 'Proposer withdrew before acceptance.' : 'Counterparty declined the proposal.',
     ruleId: RULES.EXCHANGE_TERMS,
     summary: withdraw ? 'Proposal withdrawn' : 'Proposal declined',
   });
+  const actor = roleOf(ex, memberId) === 'provider' ? ex.provider : ex.recipient;
+  const other = actor.id === ex.providerId ? ex.recipient : ex.provider;
+  tell(ctx, ex, other, withdraw ? 'exchange.withdrawn' : 'exchange.declined', 'exchanges', `${actor.displayName} ${withdraw ? 'withdrew' : 'declined'} “${ex.deliverable}”`, 'No credits were reserved.', 'closed');
+  return u;
 }
 
 /**
  * Settles an exchange: ledger transfer + status SETTLED + vouch interaction refresh +
  * credibility refresh, all inside the caller's transaction.
  */
-async function settle(tx: Tx, ctx: Ctx, ex: Exchange, opts: { amount?: number; via: string; data?: Prisma.ExchangeUpdateManyMutationInput; ruleId: string }) {
+async function settle(tx: Tx, ctx: Ctx, ex: Exchange, opts: { amount?: number; via: string; data?: Prisma.ExchangeUpdateManyMutationInput; ruleId: string; earnTrust?: boolean }) {
   const { paid } = await settleReservation(tx, ctx, ex.id, {
     amount: opts.amount,
     explanation: `Exchange "${ex.deliverable}" settled (${opts.via}): recipient pays provider.`,
@@ -322,7 +464,12 @@ async function settle(tx: Tx, ctx: Ctx, ex: Exchange, opts: { amount?: number; v
     summary: `Settled: ${c(paid)} credit(s) paid (${opts.via})`,
   });
   await recordQualifyingInteraction(tx, ctx, ex.providerId, ex.recipientId, ex.id);
+  // Earned trust only for exchanges BOTH parties confirmed in full (never disputed/partial ones).
+  if (opts.earnTrust) await recordEarnedTrust(tx, ctx, ex);
   await refreshCredibility(tx, ctx, [ex.providerId, ex.recipientId], `exchange settled (${opts.via})`);
+  const [provider, recipient] = await Promise.all([getMember(tx, ex.providerId), getMember(tx, ex.recipientId)]);
+  tell(ctx, ex, provider, 'credits.settled', 'credits', `You received ${c(paid)} credit(s) for “${ex.deliverable}”`, `${recipient.displayName} paid ${c(paid)} credit(s) (settled via ${opts.via}).`, 'settled');
+  tell(ctx, ex, recipient, 'credits.settled', 'credits', `${c(paid)} credit(s) paid for “${ex.deliverable}”`, `Paid to ${provider.displayName} (settled via ${opts.via}). Your reservation is closed.`, 'settled');
   return updated;
 }
 
@@ -354,9 +501,12 @@ export async function confirmCompletion(tx: Tx, ctx: Ctx, id: string, memberId: 
       ruleId: RULES.EXCHANGE_CONFIRM,
       summary: `${role === 'provider' ? ex.provider.displayName : ex.recipient.displayName} confirmed completion`,
     });
+    const me = role === 'provider' ? ex.provider : ex.recipient;
+    const other = role === 'provider' ? ex.recipient : ex.provider;
+    tell(ctx, ex, other, 'confirmation.requested', 'reminders', `${me.displayName} confirmed “${ex.deliverable}” — please confirm too`, `Confirm completion by ${ex.confirmationDeadline.toISOString().slice(0, 16).replace('T', ' ')} UTC to settle the credits, or open a dispute if the agreed activity did not happen.`, 'first');
     return u;
   }
-  return settle(tx, ctx, ex, { via: 'mutual confirmation', data, ruleId: RULES.LEDGER_SETTLE });
+  return settle(tx, ctx, ex, { via: 'mutual confirmation', data, ruleId: RULES.LEDGER_SETTLE, earnTrust: true });
 }
 
 /**
@@ -383,15 +533,20 @@ export async function cancelExchange(tx: Tx, ctx: Ctx, id: string, memberId: str
       ruleId: RULES.EXCHANGE_CANCEL,
       summary: 'Late cancellation requested; waiting for the other member',
     });
+    const other = memberId === ex.providerId ? ex.recipient : ex.provider;
+    tell(ctx, ex, other, 'exchange.cancel_requested', 'exchanges', `Cancellation requested for “${ex.deliverable}”`, `The free cancellation window has closed, so your agreement is needed. Reason given: ${reason}`, 'request');
     return u;
   }
   await releaseReservation(tx, ctx, id, `Exchange cancelled (${free ? 'within free cancellation window' : 'by mutual agreement'}): ${reason}`, RULES.EXCHANGE_CANCEL);
-  return transition(tx, ctx, ex, 'CANCELLED', { closedAt: ctx.now, cancelReason: ex.cancelReason ?? reason }, {
+  const u = await transition(tx, ctx, ex, 'CANCELLED', { closedAt: ctx.now, cancelReason: ex.cancelReason ?? reason }, {
     action: 'exchange.cancelled',
     reason: free ? `Cancelled before the notice cutoff (${cutoff.toISOString()}).` : 'Both parties agreed to a late cancellation.',
     ruleId: RULES.EXCHANGE_CANCEL,
     summary: 'Exchange cancelled; reservation released',
   });
+  const other = memberId === ex.providerId ? ex.recipient : ex.provider;
+  tell(ctx, ex, other, 'exchange.cancelled', 'exchanges', `Cancelled: “${ex.deliverable}”`, `${free ? 'Cancelled within the free window' : 'Cancelled by mutual agreement'}. The reservation was released; no credits moved.`, 'cancelled');
+  return u;
 }
 
 /** Partial completion: one party proposes a reduced amount, the other accepts; the rest is released. */
