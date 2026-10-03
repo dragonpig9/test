@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { credits, fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
@@ -63,6 +64,9 @@ export function DemoBar({ onToggleGuide }: { onToggleGuide: () => void }) {
           </select>
         </label>
         <div className="ml-auto flex items-center gap-2">
+          <Link to="/demo" className="rounded-md bg-amber-400 px-2.5 py-1 text-xs font-semibold text-amber-950 hover:bg-amber-300">
+            Simple demo
+          </Link>
           <button type="button" onClick={onToggleGuide} className="rounded-md bg-amber-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-950">
             Demo guide
           </button>

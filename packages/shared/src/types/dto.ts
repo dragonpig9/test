@@ -471,6 +471,83 @@ export interface DemoGuideStep {
   where: string;
 }
 
+/** One participant's credits, credibility and recent ledger postings, for the Simple demo walkthrough. */
+export interface DemoParticipantView {
+  member: MemberSummary;
+  credits: CreditSummary;
+  credibility: { score: number; history: CredibilityView['history']; permissions: PermissionCheck[] };
+  /** Ledger postings since the Mei ↔ Sam story started (service transfers, pool rewards, expiry). */
+  recentLedger: LedgerEntryView[];
+}
+
+/** Before/after values for the two settled exchanges, read from records (ledger, snapshots, trust updates). */
+export interface DemoComparisonRow {
+  memberId: string;
+  /** Service transfers for the cooking and tutoring exchanges only. */
+  serviceTransfers: { exchangeId: string; deliverable: string; amount: number }[];
+  /** Postings since the first settlement that did NOT come from these exchanges (e.g. pool rewards after a clock change). */
+  otherPostings: { kind: string; amount: number; effectiveAt: string; explanation: string }[];
+  postedBefore: number | null;
+  postedNow: number;
+  reservedNow: number;
+  availableNow: number;
+  credibilityBefore: number | null;
+  credibilityAfter: number | null;
+  credibilityNow: number;
+  highTrustThreshold: number;
+}
+
+/**
+ * Everything the Simple demo walkthrough (/demo) shows, read from existing records with existing services.
+ * Read-only: nothing here changes data. Actions in the walkthrough call the ordinary API as the acting member.
+ */
+export interface DemoWalkthroughView {
+  now: string;
+  members: Record<string, MemberSummary>;
+  /** Backend-derived completion of the 15 Demo Guide steps, grouped into five chapters. */
+  chapters: { n: number; title: string; steps: DemoGuideStep[]; done: boolean }[];
+  trust: {
+    cookingOffer: ListingView | null;
+    tutoringOffer: ListingView | null;
+    translationOffer: ListingView | null;
+    /** Alice's request, with Mei's eligibility evaluated now. */
+    catTask: ListingView | null;
+    path: PathResult | null;
+    aliceVouch: { edge: EdgeView; liabilityMultiplier: number; backedStrength: number } | null;
+  };
+  story: {
+    cooking: ExchangeView | null;
+    tutoring: ExchangeView | null;
+    translation: ExchangeView | null;
+    trustUpdates: { cooking: TrustUpdateView | null; tutoring: TrustUpdateView | null };
+    disputeId: string | null;
+    comparison: {
+      settled: number;
+      firstSettledAt: string | null;
+      lastSettledAt: string | null;
+      rows: DemoComparisonRow[];
+      earned: { before: number | null; after: number | null; relationshipTrustBefore: number | null; relationshipTrustAfter: number | null };
+    };
+    auditTrail: TimelineEntry[];
+  };
+  participants: { mei: DemoParticipantView; sam: DemoParticipantView };
+  results: {
+    invitePermission: PermissionCheck | null;
+    invitations: InvitationView[];
+    notifications: NotificationView[];
+    /** Email outbox rows linked to Mei's notifications (previews in demo mode; never verification codes). */
+    emailPreviews: EmailOutboxView[];
+  };
+  edgeCases: {
+    catExchangeId: string | null;
+    floorExchangeId: string | null;
+    benCredits: CreditSummary | null;
+    kettleDisputeId: string | null;
+    tomasCredits: CreditSummary | null;
+    meiSkillClaims: SkillClaimView[];
+  };
+}
+
 export interface SkillTierView {
   category: string;
   tier: SkillTier;

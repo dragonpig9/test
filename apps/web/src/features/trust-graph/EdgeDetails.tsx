@@ -6,16 +6,18 @@ import { api } from '../../lib/api';
 import { MemberChip } from '../../components/MemberChip';
 import { fmtDate } from '../../lib/format';
 
-export function EdgeDetails({ edge, members, onClose }: { edge: EdgeView; members: Map<string, MemberSummary>; onClose: () => void }) {
+export function EdgeDetails({ edge, members, onClose }: { edge: EdgeView; members: Map<string, MemberSummary>; onClose?: () => void }) {
   const a = members.get(edge.voucherId);
   const b = members.get(edge.voucheeId);
   return (
     <Card
       title="Vouch details"
       actions={
-        <button type="button" className="text-sm text-slate-500 hover:text-slate-800" onClick={onClose}>
-          Close
-        </button>
+        onClose && (
+          <button type="button" className="text-sm text-slate-500 hover:text-slate-800" onClick={onClose}>
+            Close
+          </button>
+        )
       }
     >
       <p className="mb-3 text-sm">
