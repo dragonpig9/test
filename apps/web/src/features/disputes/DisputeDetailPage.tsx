@@ -84,7 +84,14 @@ export function DisputeDetailPage() {
                 <p className="text-sm font-semibold">
                   Round {s.round} · needed {s.requiredCount} · {s.sufficient ? `selected ${s.selected.map((m) => m.displayName).join(', ')}` : 'not enough eligible members'}
                 </p>
-                <p className="font-mono text-[11px] text-slate-500">seed: {s.seed}</p>
+                <p className="font-mono text-[11px] text-slate-500">
+                  seed: {s.seed} · method: {s.method}
+                </p>
+                {s.method === 'lowest-closeness-v2' && (
+                  <p className="mt-1 text-xs text-slate-600">
+                    Eligible members are ranked by closeness = max(relationship trust to {e.provider.displayName.split(' ')[0]}, to {e.recipient.displayName.split(' ')[0]}); the lowest is preferred and equal values are ordered by the seed. Credibility is only a threshold.
+                  </p>
+                )}
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="text-slate-500">
@@ -93,7 +100,8 @@ export function DisputeDetailPage() {
                         <th className="pr-2">Eligible</th>
                         <th className="pr-2">Hops to {e.provider.displayName.split(' ')[0]} / {e.recipient.displayName.split(' ')[0]}</th>
                         <th className="pr-2">Score</th>
-                        <th>Why excluded</th>
+                        <th className="pr-2">Closeness</th>
+                        <th>Why included / excluded</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -108,7 +116,10 @@ export function DisputeDetailPage() {
                             {c.distanceToParties[e.provider.id] ?? '∞'} / {c.distanceToParties[e.recipient.id] ?? '∞'}
                           </td>
                           <td className="pr-2 num">{c.score}</td>
-                          <td className="text-slate-600">{c.reasons.join('; ') || '—'}</td>
+                          <td className="pr-2 num" title={c.closeness ? `to ${e.provider.displayName}: ${c.closeness.toParties[e.provider.id] ?? 0}, to ${e.recipient.displayName}: ${c.closeness.toParties[e.recipient.id] ?? 0}` : undefined}>
+                            {c.closeness && c.eligible ? `${c.closeness.value}${c.rank ? ` (#${c.rank})` : ''}` : '—'}
+                          </td>
+                          <td className="text-slate-600">{c.eligible ? c.selectionReason ?? 'Eligible' : c.reasons.join('; ') || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -126,6 +137,7 @@ export function DisputeDetailPage() {
                       <MemberChip m={a.attestor} suffix={`round ${a.round}`} />
                       <StatusChip status={a.vote ?? a.status} label={a.vote ? `voted ${a.vote.toLowerCase()}` : a.status.toLowerCase().replace('_', ' ')} />
                     </div>
+                    {a.selectionReason && <p className="mt-1 text-xs text-slate-500">{a.selectionReason.startsWith('Selected because') ? 'Selected because this member meets the reliability requirement and has limited connections to either party.' : a.selectionReason}</p>}
                     {a.reason && <p className="mt-1 text-slate-700">“{a.reason}”</p>}
                   </li>
                 ))}

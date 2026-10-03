@@ -61,7 +61,7 @@ export function TrustGraph({
   onEdge: (id: string) => void;
 }) {
   const pos = useMemo(() => layeredLayout(graph), [graph]);
-  const pathEdges = new Set(path?.found ? path.steps.map((s) => s.edge.id) : []);
+  const pathEdges = new Set(path?.found ? path.steps.flatMap((s) => [s.edge?.id, s.earned?.id].filter((x): x is string => !!x)) : []);
   const pathNodes = new Set(path?.found ? path.members.map((m) => m.id) : []);
   const nodes: Node<MemberNodeData>[] = graph.nodes.map((n) => ({
     id: n.id,
@@ -99,6 +99,23 @@ export function TrustGraph({
       },
     };
   });
+  // Earned relationships: violet, undirected (no arrow), only while active.
+  for (const r of graph.earnedEdges ?? []) {
+    if (r.status !== 'ACTIVE') continue;
+    const onPath = pathEdges.has(r.id);
+    const color = onPath ? '#0d9488' : '#7c3aed';
+    edges.push({
+      id: r.id,
+      source: r.memberAId,
+      target: r.memberBId,
+      animated: onPath,
+      label: `earned ${r.effectiveStrength}`,
+      labelStyle: { fontSize: 10, fontWeight: 600, fill: color },
+      labelBgStyle: { fill: '#fff' },
+      ariaLabel: `Earned relationship, strength ${r.effectiveStrength}`,
+      style: { stroke: color, strokeWidth: onPath ? 4 : focusEdge === r.id ? 3.5 : 1.5, strokeDasharray: '2 4' },
+    });
+  }
   return (
     <div className="h-[520px] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50" aria-label="Trust network graph">
       <ReactFlow

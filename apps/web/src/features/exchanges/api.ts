@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ExchangeTermsInput, ExchangeView, PathResult, ProposeExchangeInput, TimelineEntry } from '@commonhours/shared';
+import type { ExchangeTermsInput, ExchangeView, PathResult, ProposeExchangeInput, TaskEligibilityView, TimelineEntry, TrustUpdateView } from '@commonhours/shared';
 import { api } from '../../lib/api';
 
 export interface ExchangeDetail {
@@ -7,6 +7,11 @@ export interface ExchangeDetail {
   trustPath: PathResult;
   timeline: TimelineEntry[];
   liabilitySnapshot: { vouchId: string; voucherId: string; voucheeId: string; strength: number; liabilityPct: number }[] | null;
+  /** Live before acceptance, the recorded snapshot afterwards. */
+  eligibility: TaskEligibilityView | null;
+  trustUpdate: TrustUpdateView | null;
+  /** Only for the provider of an accepted in-home exchange. */
+  homeAddress: string | null;
 }
 
 export const useExchanges = () => useQuery({ queryKey: ['exchanges'], queryFn: () => api<{ exchanges: ExchangeView[] }>('/exchanges') });
@@ -20,3 +25,4 @@ export const confirmExchange = (id: string) => api(`/exchanges/${id}/confirm`, {
 export const cancelExchange = (id: string, reason: string) => api(`/exchanges/${id}/cancel`, { body: { reason } });
 export const proposePartial = (id: string, amount: number, note: string) => api(`/exchanges/${id}/partial`, { body: { amount, note } });
 export const acceptPartial = (id: string) => api(`/exchanges/${id}/partial/accept`, { body: {} });
+export const approveHomeAccess = (id: string, termsVersion: number) => api(`/exchanges/${id}/home-access`, { body: { termsVersion, acknowledge: true } });

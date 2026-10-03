@@ -4,7 +4,7 @@ import { Card, ErrorBox, Loading, PageHeader, Tabs } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { VouchingPanel } from '../vouching/VouchingPanel';
 import { useGraph, usePath } from './api';
-import { EdgeDetails } from './EdgeDetails';
+import { EarnedEdgeDetails, EdgeDetails } from './EdgeDetails';
 import { MemberProfilePanel } from './MemberProfile';
 import { PathPanel } from './PathPanel';
 import { TrustGraph } from './TrustGraph';
@@ -32,11 +32,12 @@ export function TrustNetworkPage() {
 
   const disconnected = graph.data?.nodes.filter((n) => !n.connected) ?? [];
   const edge = graph.data?.edges.find((e) => e.id === edgeId);
+  const earned = graph.data?.earnedEdges.find((e) => e.id === edgeId);
   return (
     <div>
       <PageHeader
         title="Trust Network"
-        subtitle="Arrows point from voucher to vouched member. Solid green = active, dashed amber = decayed (12+ months without a settled exchange), dotted grey = expired or revoked (no reachability). Click a member to see their profile; click two members to highlight the shortest active path."
+        subtitle="Arrows point from voucher to vouched member. Solid green = active, dashed amber = decayed (12+ months without a settled exchange), dotted grey = expired or revoked (no reachability). Dotted violet = earned relationship from exchanges both members confirmed (no liability). Click a member to see their profile; click two members to highlight the strongest path."
       />
       <div className="mb-4">
         <Tabs
@@ -135,9 +136,44 @@ export function TrustNetworkPage() {
                   </table>
                 </div>
               </Card>
+              {graph.data.earnedEdges.length > 0 && (
+                <Card title="Earned relationships (table view)">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-xs text-slate-500">
+                        <tr>
+                          <th className="py-2 pr-3">Members</th>
+                          <th className="pr-3">Strength</th>
+                          <th className="pr-3">Confirmed exchanges</th>
+                          <th className="pr-3">Last exchange</th>
+                          <th>Details</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {graph.data.earnedEdges.map((e) => (
+                          <tr key={e.id}>
+                            <td className="py-2 pr-3">
+                              {members.get(e.memberAId)?.displayName} ↔ {members.get(e.memberBId)?.displayName}
+                            </td>
+                            <td className="pr-3 num">{e.decayed ? `${e.strength}→${e.effectiveStrength}` : e.status === 'EXPIRED' ? 'expired' : e.effectiveStrength}</td>
+                            <td className="pr-3 num">{e.countedExchanges}</td>
+                            <td className="pr-3">{e.lastExchangeAt.slice(0, 10)}</td>
+                            <td>
+                              <button type="button" className="text-brand-700 hover:underline" onClick={() => setEdgeId(e.id)}>
+                                History
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
             </div>
             <div className="min-w-0 space-y-4">
               {edge && <EdgeDetails edge={edge} members={members} onClose={() => setEdgeId(undefined)} />}
+              {earned && <EarnedEdgeDetails edge={earned} members={members} onClose={() => setEdgeId(undefined)} />}
               <PathPanel path={path.data} loading={path.isLoading} error={path.error} ready={!!from && !!to && from !== to} />
               {focus && members.get(focus) && <MemberProfilePanel member={members.get(focus)!} />}
             </div>

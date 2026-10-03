@@ -7,6 +7,8 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { credits, fmtDate } from '../../lib/format';
 import { DemoGuide } from '../demo/DemoGuide';
+import { useNotifications } from '../notifications/api';
+import { NotificationList } from '../notifications/NotificationList';
 
 interface DisputeRow {
   id: string;
@@ -23,6 +25,7 @@ export function OverviewPage() {
   const disputes = useQuery({ queryKey: ['disputes', 'mine'], queryFn: () => api<{ disputes: DisputeRow[] }>('/disputes') });
   const vouches = useQuery({ queryKey: ['vouches'], queryFn: () => api<{ vouches: { id: string; status: string; direction: string; voucher: { displayName: string } }[] }>('/vouches') });
   const activity = useQuery({ queryKey: ['audit', 'mine', 'short'], queryFn: () => api<{ events: AuditEventView[] }>('/audit') });
+  const notifications = useNotifications({ limit: 6 });
   if (!me) return null;
   const s = summary.data;
   const attention = [
@@ -81,6 +84,18 @@ export function OverviewPage() {
               </ul>
             ) : (
               <Empty title="Nothing waiting on you">Browse the Service Board to offer or request help.</Empty>
+            )}
+          </Card>
+          <Card
+            title={`Recent notifications${notifications.data?.unread ? ` (${notifications.data.unread} unread)` : ''}`}
+            actions={<Link to="/notifications" className="text-sm font-medium text-brand-700 hover:underline">All notifications</Link>}
+          >
+            {notifications.isLoading ? (
+              <Loading />
+            ) : notifications.data?.notifications.length ? (
+              <NotificationList items={notifications.data.notifications} compact />
+            ) : (
+              <Empty title="No notifications yet">Task requests, settlements, trust changes and jury duty appear here.</Empty>
             )}
           </Card>
           <Card title="Recent activity" actions={<Link to="/activity" className="text-sm font-medium text-brand-700 hover:underline">All activity</Link>}>

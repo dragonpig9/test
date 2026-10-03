@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { DemoBar } from '../features/demo/DemoBar';
 import { DemoGuide } from '../features/demo/DemoGuide';
+import { NotificationBell } from '../features/notifications/NotificationsPage';
 import { Avatar } from './MemberChip';
 
 const NAV = [
@@ -15,6 +16,8 @@ const NAV = [
   { to: '/credibility', label: 'My Credibility', icon: '★' },
   { to: '/disputes', label: 'Disputes', icon: '⚖' },
   { to: '/activity', label: 'Activity', icon: '☰' },
+  { to: '/notifications', label: 'Notifications', icon: '🔔' },
+  { to: '/profile', label: 'My Profile', icon: '☺' },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -35,6 +38,9 @@ export function Layout({ children }: { children: ReactNode }) {
               ◷
             </span>
             <span className="text-lg font-semibold tracking-tight text-slate-900">CommonHours</span>
+            <span className="ml-auto">
+              <NotificationBell onNavigate={() => setMenuOpen(false)} />
+            </span>
           </div>
           <nav className="space-y-0.5 px-3">
             {NAV.map((n) => (
@@ -82,6 +88,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </button>
             <span className="font-semibold">CommonHours</span>
             <span className="ml-auto truncate text-xs text-slate-500">{NAV.find((n) => (n.to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(n.to)))?.label}</span>
+            <NotificationBell />
           </header>
           <main id="main" className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             {children}

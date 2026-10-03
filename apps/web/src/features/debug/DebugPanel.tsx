@@ -14,7 +14,11 @@ const TABS = [
   { value: 'exchanges', label: 'Exchange states', path: '/debug/exchanges' },
   { value: 'ledger', label: 'Ledger', path: '/debug/ledger' },
   { value: 'credibility', label: 'Credibility', path: '/debug/credibility' },
-  { value: 'eligibility', label: 'Attestor eligibility', path: '/debug/eligibility' },
+  { value: 'eligibility', label: 'Jury candidates', path: '/debug/eligibility' },
+  { value: 'tasks', label: 'Task eligibility', path: '/debug/task-eligibility' },
+  { value: 'pricing', label: 'Pricing', path: '/debug/pricing' },
+  { value: 'trustUpdates', label: 'Trust updates', path: '/debug/trust-updates' },
+  { value: 'notifications', label: 'Notifications & email', path: '/debug/notifications' },
   { value: 'requests', label: 'API requests & errors', path: '/debug/requests' },
   { value: 'audit', label: 'Audit events', path: '/debug/audit' },
 ] as const;

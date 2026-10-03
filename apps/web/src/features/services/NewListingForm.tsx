@@ -2,12 +2,22 @@ import { useState } from 'react';
 import { SERVICE_CATEGORIES, type CreateListingInput } from '@commonhours/shared';
 import { Button, ErrorBox, Field } from '../../components/ui';
 import { useAction } from '../../lib/mutations';
+import { RequirementFields, type Requirements } from '../task-eligibility/RequirementFields';
 import { createListing } from './api';
 
 export function NewListingForm({ onDone }: { onDone: () => void }) {
   const [f, setF] = useState<CreateListingInput>({ type: 'OFFER', title: '', description: '', category: 'Tutoring', durationMinutes: 60, locationType: 'ONLINE', location: '', availability: '', requiredSkills: [] });
   const [skills, setSkills] = useState('');
-  const save = useAction(() => createListing({ ...f, requiredSkills: skills.split(',').map((s) => s.trim()).filter(Boolean) }), onDone);
+  const [req, setReq] = useState<Requirements>({ trustTier: 'STANDARD', minCredibility: null, minRelationshipTrust: null, maxCreditBudget: null });
+  const save = useAction(
+    () =>
+      createListing({
+        ...f,
+        requiredSkills: skills.split(',').map((s) => s.trim()).filter(Boolean),
+        ...(f.type === 'REQUEST' ? req : { trustTier: req.trustTier }),
+      }),
+    onDone,
+  );
   return (
     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save.mutate(undefined); }}>
       <fieldset className="flex gap-2">
@@ -37,7 +47,7 @@ export function NewListingForm({ onDone }: { onDone: () => void }) {
           <select id="ldur" className="input" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: Number(e.target.value) })}>
             {[30, 60, 90, 120, 180, 240].map((m) => (
               <option key={m} value={m}>
-                {m / 60} hour(s) = {m / 60} credit(s)
+                {m / 60} hour(s)
               </option>
             ))}
           </select>
@@ -58,6 +68,7 @@ export function NewListingForm({ onDone }: { onDone: () => void }) {
           <input id="lsk" className="input" value={skills} onChange={(e) => setSkills(e.target.value)} />
         </Field>
       </div>
+      <RequirementFields value={req} onChange={setReq} mode={f.type === 'REQUEST' ? 'request' : 'offer'} />
       <ErrorBox error={save.error} />
       <Button type="submit" busy={save.isPending}>
         Post listing
