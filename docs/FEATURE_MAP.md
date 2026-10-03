@@ -234,3 +234,11 @@ Shared state transitions use `API/core/state-machine.ts` (`assertTransition` →
 - **Endpoints:** `GET /api/badges/me`, `PUT /api/badges/me/visibility`
 - **Rules:** `POLICY.badges`; evaluated after commit of a settlement; idempotent; no credit, credibility, trust or permission effect.
 - **Test:** `test/badges.test.ts`, `test/economy-preserved.test.ts`.
+
+## 28. Simple demo walkthrough (`/demo`)
+- **Frontend:** `WEB/features/demo/walkthrough/{DemoWalkthroughPage (shell, progress, participant, Back/Next),parts (ActAsButton, ExchangePanel, ClockControl, Details),Chapter1Trust,Chapter2Exchanges,Chapter3Pricing,Chapter4Dispute,Chapter5Results,EdgeCases,api}.tsx`; route `/demo` in `App.tsx` (outside the app shell); entry links on the login page, demo bar and Demo guide
+- **Reused:** `TermsForm`, `ExchangeActions` (`useExchangeAction`), `PriceBreakdown`, `EligibilityPanel`, `PathPanel`, `EdgeDetails`, `TrustGraph`, `OpenDisputeForm`, `VotePanel`/`NeedsReview`/`JurySelection`, `InviteForm`, `OutboxList`, `TrustUpdateCard`, `Timeline`
+- **Backend:** `API/modules/demo/{demo.walkthrough (read-only view),demo.service (storyRecords shared with demoGuide)}.ts`
+- **Endpoint:** `GET /api/demo/walkthrough` (demo mode only; no writes; never returns addresses, codes or evidence)
+- **Rules:** chapter ticks = Demo Guide steps from records; actions go through the ordinary API as the acting member; the clock moves only on an explicit button; no reset.
+- **Test:** `test/demo.walkthrough.test.ts`.

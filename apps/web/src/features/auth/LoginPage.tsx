@@ -67,6 +67,11 @@ export function LoginPage() {
             </Link>
           </div>
           {demo.data && (
+            <Link to="/demo" className="mt-4 block rounded-xl bg-amber-400 px-4 py-3 text-center text-base font-semibold text-amber-950 shadow-sm hover:bg-amber-300">
+              Simple demo <span className="block text-xs font-normal">A guided five-chapter tour. No sign-up needed.</span>
+            </Link>
+          )}
+          {demo.data && (
             <div className="mt-6 border-t border-slate-200 pt-5">
               <p className="text-sm font-semibold text-slate-900">
                 Demo account switcher <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-900">demo only</span>

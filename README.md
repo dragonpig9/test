@@ -52,6 +52,20 @@ The earlier "Subscription Hunter" starter was not relevant to this problem and l
 
 ---
 
+## Simple demo for judges (`/demo`)
+
+**Submission link: `https://<your-host>/demo`.** It opens straight into a guided walkthrough, signed in as Mei through the existing demo switcher (no registration, mailbox or invitation). It turns the 15-step Demo Guide below into five chapters with the real actions embedded:
+
+| Chapter | Guide steps | What the judge sees and does |
+| --- | --- | --- |
+| 1 · Find help and understand trust | 1–4 | Sam's offer, the live Mei → Alice → Ben → Sam path, Alice's vouch (base, liability backing, max penalty), Mei's credibility and the locked cat-sitting task |
+| 2 · Agree, reserve and complete | 5–8 | Propose cooking (2h) and tutoring (1h), accept as Sam, see reservations, advance the shared clock explicitly, confirm, then a before/after table read from records |
+| 3 · Skill and demand pricing | 9 | Sam requests translation with punctuality agreed; the backend quote (tier × demand) and the locked price after Mei accepts |
+| 4 · Resolve a dispute | 10–12 | Sam's punctuality dispute, frozen credits, selected jurors (full table under Details), "Acting as …" before each vote |
+| 5 · See the results | 13–15 | Settlements vs pool rewards, credibility changes, audit trail, Mei's invitation (with liability consent), notifications and email previews |
+
+Back/Next only change the chapter shown; ticks come from backend records. Completed examples show their saved result. Nothing resets data: the walkthrough reads `GET /api/demo/walkthrough` (read-only, demo mode only) and acts through the ordinary API as the acting member. "Explore edge cases" covers home-access approval, peer-reviewed skill tiers, the credit floor, NEEDS_REVIEW and expiry. The full app (with the original Demo guide) stays one click away.
+
 ## Hackathon demo (`DEMO_MODE=true`)
 
 `DEMO_MODE` is one server setting (`apps/api/src/config/demo-mode.ts`, read from the environment only; browsers cannot switch it through storage, headers or query strings). `GET /api/health` reports it to the web app. With it on, verification never blocks access: no email links, codes, documents or manual checks, and no blocking banners. Everything else (invitation codes, credibility thresholds, the credit floor, pricing, the pool) is unchanged. Demo admission is recorded separately (`Member.demoAdmittedAt`); verified flags are never set, and those members show **Demo student** / **Demo member** instead of a verified badge. Set `DEMO_MODE=false` and the original verification applies again on the next request, for existing sessions and circle memberships too.

@@ -10,21 +10,11 @@ import { OpenDisputeForm } from '../disputes/OpenDisputeForm';
 import { PriceBreakdown } from '../pricing/PriceBreakdown';
 import { EligibilityPanel, TierBadge } from '../task-eligibility/EligibilityPanel';
 import { TrustUpdateCard } from '../trust-graph/TrustUpdateCard';
-import { acceptExchange, acceptPartial, approveHomeAccess, cancelExchange, confirmExchange, declineExchange, proposePartial, useExchange } from './api';
+import { proposePartial, useExchange } from './api';
+import { ACTION_LABEL, useExchangeAction } from './ExchangeActions';
 import { TermsForm } from './TermsForm';
 
-const LABEL: Record<string, string> = {
-  accept: 'Accept these terms',
-  approveHomeAccess: 'Approve home access',
-  decline: 'Decline',
-  withdraw: 'Withdraw proposal',
-  editTerms: 'Change terms',
-  confirm: 'Confirm completion',
-  cancel: 'Cancel exchange',
-  dispute: 'Open a dispute',
-  proposePartial: 'Propose partial completion',
-  acceptPartial: 'Accept partial completion',
-};
+const LABEL = ACTION_LABEL;
 
 export function ExchangeDetailPage() {
   const { id } = useParams();
@@ -32,25 +22,7 @@ export function ExchangeDetailPage() {
   const q = useExchange(id);
   const [modal, setModal] = useState<'edit' | 'dispute' | 'partial' | 'reciprocal' | null>(null);
   const [partial, setPartial] = useState({ amount: 0.5, note: '' });
-  const act = useAction(async (key: string) => {
-    const e = q.data!.exchange;
-    if (key === 'accept') return acceptExchange(e.id, e.termsVersion);
-    if (key === 'decline' || key === 'withdraw') return declineExchange(e.id);
-    if (key === 'confirm') return confirmExchange(e.id);
-    if (key === 'acceptPartial') return acceptPartial(e.id);
-    if (key === 'approveHomeAccess') {
-      const ok = window.confirm(
-        `Grant ${e.provider.displayName} permission to enter your home while you are away, for this exchange (terms version ${e.termsVersion}) only?\n\nTheir eligibility does not grant this automatically. Changing the terms will require a new approval.`,
-      );
-      if (!ok) throw Object.assign(new Error('Home access was not approved.'), { code: 'VALIDATION_FAILED', module: 'web' });
-      return approveHomeAccess(e.id, e.termsVersion);
-    }
-    if (key === 'cancel') {
-      const reason = window.prompt('Reason for cancelling (shared with the other member):');
-      if (!reason || reason.length < 3) throw Object.assign(new Error('Cancellation needs a reason of at least 3 characters.'), { code: 'VALIDATION_FAILED', module: 'web' });
-      return cancelExchange(e.id, reason);
-    }
-  });
+  const act = useExchangeAction(q.data?.exchange);
   const doPartial = useAction(() => proposePartial(q.data!.exchange.id, Math.round(partial.amount * 100), partial.note), () => setModal(null));
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} title="Could not load this exchange" />;

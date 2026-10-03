@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
-import type { NotificationCategory } from '@commonhours/shared';
+import type { EmailOutboxView, NotificationCategory } from '@commonhours/shared';
 import { Button, Card, Empty, ErrorBox, Loading, StatusChip, Success } from '../../components/ui';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
@@ -71,29 +71,36 @@ export function NotificationSettings() {
         {outbox.isLoading ? (
           <Loading />
         ) : outbox.data?.emails.length ? (
-          <ul className="space-y-2">
-            {outbox.data.emails.map((e) => (
-              <li key={e.id} className="rounded-lg border border-slate-200 p-2.5 text-xs">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusChip status={EMAIL_CHIP[e.status] ?? 'PENDING'} label={e.status === 'PREVIEW' ? 'preview (not sent)' : e.status.toLowerCase()} />
-                  <span className="font-semibold text-slate-900">{e.subject}</span>
-                </div>
-                <p className="text-slate-500">
-                  to {e.toAddress} · {fmtDate(e.createdAt)}
-                  {e.attempts ? ` · ${e.attempts} attempt(s)` : ''}
-                  {e.lastError ? ` · ${e.lastError}` : ''}
-                </p>
-                <details className="mt-1">
-                  <summary className="cursor-pointer text-brand-700">Show email</summary>
-                  <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-700">{e.body}</pre>
-                </details>
-              </li>
-            ))}
-          </ul>
+          <OutboxList emails={outbox.data.emails} />
         ) : (
           <Empty title="No emails yet">Turn on email notifications and verify your address to receive them.</Empty>
         )}
       </Card>
     </div>
+  );
+}
+
+/** Emails CommonHours prepared, with delivery status. In demo mode these are labelled previews, never "sent". */
+export function OutboxList({ emails }: { emails: EmailOutboxView[] }) {
+  return (
+    <ul className="space-y-2">
+      {emails.map((e) => (
+        <li key={e.id} className="rounded-lg border border-slate-200 p-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusChip status={EMAIL_CHIP[e.status] ?? 'PENDING'} label={e.status === 'PREVIEW' ? 'preview (not sent)' : e.status.toLowerCase()} />
+            <span className="font-semibold text-slate-900">{e.subject}</span>
+          </div>
+          <p className="text-slate-500">
+            to {e.toAddress} · {fmtDate(e.createdAt)}
+            {e.attempts ? ` · ${e.attempts} attempt(s)` : ''}
+            {e.lastError ? ` · ${e.lastError}` : ''}
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-brand-700">Show email</summary>
+            <pre className="mt-1 whitespace-pre-wrap font-sans text-slate-700">{e.body}</pre>
+          </details>
+        </li>
+      ))}
+    </ul>
   );
 }

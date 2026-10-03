@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { useAction } from '../../lib/mutations';
 import { switchAccount, useDemoState } from './api';
@@ -21,6 +22,9 @@ export function DemoGuide({ onClose, inline }: { onClose?: () => void; inline?: 
         )}
       </div>
       <p className="mb-4 text-xs text-slate-500">Progress is detected from the database, so it only advances when real backend actions happen.</p>
+      <Link to="/demo" className="mb-4 block rounded-lg bg-amber-100 p-2.5 text-sm font-medium text-amber-950 hover:bg-amber-200">
+        Prefer a guided tour with the actions built in? Open the Simple demo →
+      </Link>
       <ol className="space-y-2">
         {demo.data.guide.map((s) => {
           const isNext = s.n === next?.n;

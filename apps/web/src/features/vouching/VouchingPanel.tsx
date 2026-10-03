@@ -157,32 +157,38 @@ export function VouchingPanel({ graph }: { graph?: GraphView }) {
 }
 
 function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [key, setKey] = useState(0);
+  return (
+    <Modal open={open} onClose={() => { setKey((k) => k + 1); onClose(); }} title="Create an invitation">
+      <InviteForm key={key} />
+    </Modal>
+  );
+}
+
+/** Invitation form: liability terms and the maximum penalty are shown, and consent is required, before creating it. */
+export function InviteForm({ inviterLabel }: { inviterLabel?: string }) {
   const [name, setName] = useState('');
   const [s, setS] = useState(0.7);
   const [l, setL] = useState(10);
   const [ack, setAck] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const create = useAction(() => createInvitation({ inviteeName: name, strength: s, liabilityPct: l }), (r) => setCode(r.invitation.code));
-  return (
-    <Modal open={open} onClose={() => { setCode(null); create.reset(); onClose(); }} title="Create an invitation">
-      {code ? (
-        <Success>
-          Invitation created. Share the code <span className="font-mono font-semibold">{code}</span> or the link{' '}
-          <a className="underline" href={`/join?code=${code}`}>/join?code={code}</a>. The vouch activates only after they accept the terms.
-        </Success>
-      ) : (
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(undefined); }}>
-          <Field label="Invitee name" htmlFor="iname">
-            <input id="iname" className="input" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} />
-          </Field>
-          <TermsChooser strength={s} liability={l} onChange={(a, b) => { setS(a); setL(b); }} ack={ack} onAck={setAck} />
-          <ErrorBox error={create.error} />
-          <Button type="submit" disabled={!ack} busy={create.isPending}>
-            Create invitation
-          </Button>
-        </form>
-      )}
-    </Modal>
+  return code ? (
+    <Success>
+      Invitation created. Share the code <span className="font-mono font-semibold">{code}</span> or the link{' '}
+      <a className="underline" href={`/join?code=${code}`}>/join?code={code}</a>. The vouch activates only after they accept the terms.
+    </Success>
+  ) : (
+    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(undefined); }}>
+      <Field label="Invitee name" htmlFor="iname">
+        <input id="iname" className="input" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} />
+      </Field>
+      <TermsChooser strength={s} liability={l} onChange={(a, b) => { setS(a); setL(b); }} ack={ack} onAck={setAck} voucherLabel={inviterLabel} />
+      <ErrorBox error={create.error} />
+      <Button type="submit" disabled={!ack} busy={create.isPending}>
+        Create invitation
+      </Button>
+    </form>
   );
 }
 

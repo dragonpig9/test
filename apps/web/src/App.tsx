@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Loading } from './components/ui';
 import { useAuth } from './lib/auth';
@@ -22,6 +22,7 @@ import { AccountPage } from './features/withdrawal/AccountPage';
 import { NotificationsPage } from './features/notifications/NotificationsPage';
 import { ProfilePage } from './features/profiles/ProfilePage';
 import { VerificationGate } from './features/verification/VerificationGate';
+import { DemoWalkthroughPage } from './features/demo/walkthrough/DemoWalkthroughPage';
 
 // The debug panel is development-only and loaded lazily so it never ships in production bundles' main chunk.
 const DebugPanel = lazy(() => import('./features/debug/DebugPanel'));
@@ -30,6 +31,9 @@ const SHOW_DEBUG = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEBUG === 
 /** Routing only. Each page lives in its feature folder. */
 export function App() {
   const { signedIn, loading, me } = useAuth();
+  const { pathname } = useLocation();
+  // The Simple demo (the submission link) handles its own demo sign-in, so it sits outside the app shell.
+  if (pathname === '/demo' || pathname.startsWith('/demo/')) return <DemoWalkthroughPage />;
   if (loading) return <Loading label="Signing you in…" />;
   if (!signedIn) {
     return (

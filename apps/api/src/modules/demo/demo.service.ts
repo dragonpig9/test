@@ -1,3 +1,4 @@
+import type { ExchangeStatus } from '@prisma/client';
 import type { DemoGuideStep } from '@commonhours/shared';
 import { RULES } from '../../config/policy';
 import type { Ctx } from '../../core/context';
@@ -56,21 +57,38 @@ export async function runSweeps(tx: Tx, ctx: Ctx) {
   return { expiredVouches: vouches, expiredCredits: credits, disputesNeedingReview: disputes, reminders };
 }
 
-/** Next-step guide computed from database state (not from UI clicks). */
-export async function demoGuide(now: Date): Promise<DemoGuideStep[]> {
-  const members = await prisma.member.findMany();
+/** Exchange states that end a proposal without an agreement; the story looks past them. */
+const CLOSED_WITHOUT_AGREEMENT: ExchangeStatus[] = ['DECLINED', 'CANCELLED', 'WITHDRAWN'];
+
+/**
+ * The records the scripted Mei ↔ Sam story is built from, found in the database (never from UI clicks).
+ * Proposals that ended without an agreement are skipped, so a declined proposal never blocks the story.
+ */
+export async function storyRecords() {
+  const members = await prisma.member.findMany({ orderBy: { joinedAt: 'asc' } });
   const by = (h: string) => members.find((m) => m.handle === h);
   const mei = by('mei');
   const sam = by('sam');
-  if (!mei || !sam) return [];
+  if (!mei || !sam) return null;
   const pair = await prisma.exchange.findMany({
-    where: { OR: [{ providerId: mei.id, recipientId: sam.id }, { providerId: sam.id, recipientId: mei.id }] },
+    where: {
+      OR: [{ providerId: mei.id, recipientId: sam.id }, { providerId: sam.id, recipientId: mei.id }],
+      status: { notIn: CLOSED_WITHOUT_AGREEMENT },
+    },
     include: { dispute: { include: { assignments: { include: { attestor: true } } } } },
     orderBy: { createdAt: 'asc' },
   });
   const cooking = pair.find((e) => e.providerId === sam.id && e.category === 'Cooking');
   const tutoring = pair.find((e) => e.providerId === mei.id && e.category === 'Tutoring');
   const third = pair.find((e) => e.id !== cooking?.id && e.id !== tutoring?.id);
+  return { members, by, mei, sam, cooking, tutoring, third };
+}
+
+/** Next-step guide computed from database state (not from UI clicks). */
+export async function demoGuide(now: Date): Promise<DemoGuideStep[]> {
+  const story = await storyRecords();
+  if (!story) return [];
+  const { mei, cooking, tutoring, third } = story;
   const accepted = (e?: { status: string }) => !!e && ['ACCEPTED', 'DISPUTED', 'SETTLED', 'RELEASED'].includes(e.status);
   const dispute = third?.dispute;
   const pending = dispute?.assignments.filter((a) => a.status === 'ASSIGNED').map((a) => a.attestor.displayName) ?? [];

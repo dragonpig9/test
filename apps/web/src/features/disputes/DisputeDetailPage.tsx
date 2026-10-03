@@ -79,54 +79,7 @@ export function DisputeDetailPage() {
           </Card>
           <Card title="Attestor selection and eligibility">
             <p className="mb-3 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-700">{d.independenceNote}</p>
-            {d.selections.map((s) => (
-              <div key={s.id} className="mb-5">
-                <p className="text-sm font-semibold">
-                  Round {s.round} · needed {s.requiredCount} · {s.sufficient ? `selected ${s.selected.map((m) => m.displayName).join(', ')}` : 'not enough eligible members'}
-                </p>
-                <p className="font-mono text-[11px] text-slate-500">
-                  seed: {s.seed} · method: {s.method}
-                </p>
-                {s.method === 'lowest-closeness-v2' && (
-                  <p className="mt-1 text-xs text-slate-600">
-                    Eligible members are ranked by closeness = max(relationship trust to {e.provider.displayName.split(' ')[0]}, to {e.recipient.displayName.split(' ')[0]}); the lowest is preferred and equal values are ordered by the seed. Credibility is only a threshold.
-                  </p>
-                )}
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="text-slate-500">
-                      <tr>
-                        <th className="py-1 pr-2">Member</th>
-                        <th className="pr-2">Eligible</th>
-                        <th className="pr-2">Hops to {e.provider.displayName.split(' ')[0]} / {e.recipient.displayName.split(' ')[0]}</th>
-                        <th className="pr-2">Score</th>
-                        <th className="pr-2">Closeness</th>
-                        <th>Why included / excluded</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {s.candidates.map((c) => (
-                        <tr key={c.member.id} className={c.eligible ? 'bg-emerald-50/40' : ''}>
-                          <td className="py-1.5 pr-2 font-medium">
-                            {c.member.displayName}
-                            {s.selected.some((x) => x.id === c.member.id) && <span className="ml-1 rounded bg-brand-700 px-1 text-[10px] text-white">selected</span>}
-                          </td>
-                          <td className="pr-2">{c.eligible ? '✓ yes' : '✗ no'}</td>
-                          <td className="pr-2 num">
-                            {c.distanceToParties[e.provider.id] ?? '∞'} / {c.distanceToParties[e.recipient.id] ?? '∞'}
-                          </td>
-                          <td className="pr-2 num">{c.score}</td>
-                          <td className="pr-2 num" title={c.closeness ? `to ${e.provider.displayName}: ${c.closeness.toParties[e.provider.id] ?? 0}, to ${e.recipient.displayName}: ${c.closeness.toParties[e.recipient.id] ?? 0}` : undefined}>
-                            {c.closeness && c.eligible ? `${c.closeness.value}${c.rank ? ` (#${c.rank})` : ''}` : '—'}
-                          </td>
-                          <td className="text-slate-600">{c.eligible ? c.selectionReason ?? 'Eligible' : c.reasons.join('; ') || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+            <JurySelection d={d} />
           </Card>
           <Card title="Votes">
             {d.assignments.length ? (
@@ -170,7 +123,7 @@ export function DisputeDetailPage() {
   );
 }
 
-function NeedsReview({ d, party }: { d: DisputeView; party: boolean }) {
+export function NeedsReview({ d, party }: { d: DisputeView; party: boolean }) {
   const retry = useAction(() => retrySelection(d.id));
   return (
     <div className="mb-6 rounded-2xl border border-red-300 bg-red-50 p-4 text-sm text-red-950" role="alert">
@@ -195,7 +148,7 @@ function NeedsReview({ d, party }: { d: DisputeView; party: boolean }) {
   );
 }
 
-function VotePanel({ d }: { d: DisputeView }) {
+export function VotePanel({ d }: { d: DisputeView }) {
   const [choice, setChoice] = useState<'CONFIRMED' | 'REFUTED' | 'UNCLEAR'>('CONFIRMED');
   const [reason, setReason] = useState('');
   const cast = useAction(() => vote(d.id, choice, reason));
@@ -279,5 +232,62 @@ function MutualPanel({ d }: { d: DisputeView }) {
         <ErrorBox error={m.error} />
       </div>
     </Card>
+  );
+}
+
+/** Every attestor selection round: who was eligible, why others were excluded, closeness and who was selected. */
+export function JurySelection({ d }: { d: DisputeView }) {
+  const e = d.exchange;
+  return (
+    <>
+      {d.selections.map((s) => (
+        <div key={s.id} className="mb-5">
+          <p className="text-sm font-semibold">
+            Round {s.round} · needed {s.requiredCount} · {s.sufficient ? `selected ${s.selected.map((m) => m.displayName).join(', ')}` : 'not enough eligible members'}
+          </p>
+          <p className="font-mono text-[11px] text-slate-500">
+            seed: {s.seed} · method: {s.method}
+          </p>
+          {s.method === 'lowest-closeness-v2' && (
+            <p className="mt-1 text-xs text-slate-600">
+              Eligible members are ranked by closeness = max(relationship trust to {e.provider.displayName.split(' ')[0]}, to {e.recipient.displayName.split(' ')[0]}); the lowest is preferred and equal values are ordered by the seed. Credibility is only a threshold.
+            </p>
+          )}
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-slate-500">
+                <tr>
+                  <th className="py-1 pr-2">Member</th>
+                  <th className="pr-2">Eligible</th>
+                  <th className="pr-2">Hops to {e.provider.displayName.split(' ')[0]} / {e.recipient.displayName.split(' ')[0]}</th>
+                  <th className="pr-2">Score</th>
+                  <th className="pr-2">Closeness</th>
+                  <th>Why included / excluded</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {s.candidates.map((c) => (
+                  <tr key={c.member.id} className={c.eligible ? 'bg-emerald-50/40' : ''}>
+                    <td className="py-1.5 pr-2 font-medium">
+                      {c.member.displayName}
+                      {s.selected.some((x) => x.id === c.member.id) && <span className="ml-1 rounded bg-brand-700 px-1 text-[10px] text-white">selected</span>}
+                    </td>
+                    <td className="pr-2">{c.eligible ? '✓ yes' : '✗ no'}</td>
+                    <td className="pr-2 num">
+                      {c.distanceToParties[e.provider.id] ?? '∞'} / {c.distanceToParties[e.recipient.id] ?? '∞'}
+                    </td>
+                    <td className="pr-2 num">{c.score}</td>
+                    <td className="pr-2 num" title={c.closeness ? `to ${e.provider.displayName}: ${c.closeness.toParties[e.provider.id] ?? 0}, to ${e.recipient.displayName}: ${c.closeness.toParties[e.recipient.id] ?? 0}` : undefined}>
+                      {c.closeness && c.eligible ? `${c.closeness.value}${c.rank ? ` (#${c.rank})` : ''}` : '—'}
+                    </td>
+                    <td className="text-slate-600">{c.eligible ? c.selectionReason ?? 'Eligible' : c.reasons.join('; ') || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </>
   );
 }

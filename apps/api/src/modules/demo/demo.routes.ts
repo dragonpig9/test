@@ -11,6 +11,7 @@ import { addDays } from '../../core/dates';
 import { nextRunAt } from '../community-pool/community-pool.service';
 import { runDailyJobsBetween, runDueDailyJob } from '../daily-job/daily-job.service';
 import { DEMO_EXTRAS, advanceClock, advanceClockTo, demoGuide, resetDemo, runSweeps } from './demo.service';
+import { demoWalkthrough } from './demo.walkthrough';
 
 export const demoRouter = Router();
 const M = 'demo';
@@ -36,6 +37,19 @@ demoRouter.get(
       devShortcuts: env.devShortcuts,
       nextDailyRunAt: nextRunAt(req.ctx.now).toISOString(),
     });
+  }),
+);
+
+/**
+ * Read-only state for the Simple demo walkthrough (/demo). Never resets or changes data, so any number of
+ * visitors can open or restart it. Actions in the walkthrough use the ordinary API as the acting member.
+ */
+demoRouter.get(
+  '/walkthrough',
+  ah(async (req, res) => {
+    const view = await demoWalkthrough(req.ctx.now);
+    if (!view) throw new AppError('NOT_FOUND', 'The demo community has not been seeded on this server.', M);
+    res.json(view);
   }),
 );
 
