@@ -77,7 +77,7 @@ The **Demo guide** (top bar → "Demo guide", also on the Overview page) tracks 
 | --- | --- | --- | --- |
 | 1 | Mei | **Service Board** → Category *Cooking*, tick "reachable only" → *Home-cooked Malaysian dinner* | Reachability "3 hops · strength 0.5776", tier badge *Restricted*, price estimate |
 | 2 | Mei | **Trust Network** → From Mei, To Sam | Strongest path Mei → Alice → Ben → Sam: each pair combines vouch + earned relationship, `0.76 × 1 × 0.76 = 0.5776`; violet dotted lines = earned relationships |
-| 3 | Mei | Click **Inspect** on Alice → Mei | Strength, age, status, liability 25% → max 5 points (earned edges carry no liability) |
+| 3 | Mei | Click **Inspect** on Alice → Mei | Strength, age, status, liability 10% → max 2 points (earned edges carry no liability). Alice → Ben carries 20% liability: 1.0 × 1.2 is capped at 1 |
 | 4 | Mei | **Service Board** → Alice's *Feed my cat and water plants while I'm away* | **🔒 locked high-trust task**: needs credibility 35, Mei has 33; *How to unlock* shows every check, the owner-approval condition and how to become eligible |
 | 5 | Mei → Sam | Request the dinner (2h). On the exchange, **Propose reciprocal exchange**: 1h maths tutoring. Switch to Sam and accept both | Two separate exchanges, each with a price breakdown and eligibility card |
 | 6 | Mei | **Time Credits** | Posted vs reserved vs available (Mei: 0 − 2 = −2, allowed) |
@@ -131,7 +131,8 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 ### Implemented
 
 - **Invite-only membership.** Alice is the documented **bootstrap member**: she founded the community without a voucher. Invitations carry strength and liability and show the maximum penalty. Joining requires accepting the community terms and the vouch terms, and only then is the vouch activated.
-- **Vouches** as directed edges (voucher → vouchee) with strength 0.4 / 0.7 / 1.0, liability 10 / 25 / 50%, creation date, last qualifying interaction, expiry and status (pending / active / declined / expired / revoked). Vouching requires the vouchee's consent. There is a limit of 5 active + pending vouches + open invitations. Amendments need the counterparty's consent, and raising liability needs the voucher's fresh consent. Revocation is available to either party.
+- **Vouches** as directed edges (voucher → vouchee) with strength 0.4 / 0.7 / 1.0, liability 10 / 20 / 30%, creation date, last qualifying interaction, expiry and status (pending / active / declined / expired / revoked). Vouching requires the vouchee's consent. There is a limit of 5 active + pending vouches + open invitations. Amendments need the counterparty's consent, and raising liability needs the voucher's fresh consent. Revocation is available to either party.
+- **Liability backing.** Liability is no longer only a risk for the voucher: the more of it they accept, the more their vouch counts for the new member. The policy maps 10% → ×1.0, 20% → ×1.2 and 30% → ×1.4 (`POLICY.vouches.liabilityStrengthMultipliers`). `backedStrength = min(1, baseStrength × liabilityMultiplier)` and `effectiveStrength = backedStrength × decayFactor` once the edge has decayed. Effective strength feeds the vouched member's credibility, trust paths and the guarantor check. Example: a 0.7 vouch counts as 0.7 at 10%, 0.84 at 20% and 0.98 at 30%, and 0.49 at 30% after it decays. The voucher's penalty stays liability% × 20 points (2, 4 or 6). Liability stored before this mapping (25% or 50%) uses the nearest lower tier (×1.2 or ×1.4).
 - **Trust graph and path finder.** An undirected view of active edges. BFS shortest path with deterministic tie-breaks (highest strength, then alphabetical handles). Connection strength is the product of effective strengths. Decay ×0.5 after 12 months without a settled exchange between the pair; expiry after 18 months. Disconnected members are shown, and a keyboard-accessible table view sits alongside the graph.
 - **Listings** (offers and requests) are kept separate from **exchanges**. Discovery filters by category and active reachability. Exchange terms cover provider and recipient, deliverable, duration, scheduled time, punctuality condition, credit amount (1h = 1 credit), an optional gift bonus from the recipient (shown separately), cancellation notice and terms, and the confirmation deadline. Terms are versioned: an edit resets the other side's acceptance, and nothing can change after acceptance.
 - **Ledger.** Balanced double-entry transactions with system accounts for expiry and adjustments. Reservations on acceptance, under a row-level lock so concurrent acceptances cannot bypass the −5 floor. Settlement is atomic and duplicate-proof (state check, row lock and unique idempotency key). Disputes freeze reservations; refuted disputes release them without payment. Cancellation and partial completion are supported.
@@ -178,7 +179,7 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 
 ---
 
-## Policy defaults (`policy-2026.10-v3`, all in `apps/api/src/config/policy.ts`)
+## Policy defaults (`policy-2026.10-v4`, all in `apps/api/src/config/policy.ts`)
 
 | Area | Default |
 | --- | --- |
@@ -186,6 +187,7 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 | Price | base = hours × 100 (hundredths) · service = round½↑(base × skill% × demand% / 10 000) · total = service + gift. One rounding step, integers only. |
 | Skill tiers | Standard ×1.00 · Skilled ×1.25 (1 review) · Advanced ×1.50 (1 review) · Specialist ×2.00 (2 reviews). Reviewers: credibility ≥ 40, not the claimant, no declared conflict; any decline closes the claim. |
 | Demand | Window 45 days. ratio = unique unmatched requesters ÷ active providers with an open offer meeting the category minimum. demand = clamp(1 + 0.10 × (ratio − 1), 1.00, 1.50). < 2 unique requesters → ×1.00 "insufficient data"; 0 providers → ×1.00 "waiting for a provider". Duplicate requests from one person count once; expired (older) requests are excluded. |
+| Vouch liability | Options 10 / 20 / 30%. Voucher penalty after a final nonperformance finding = liability% × 20 points. Strength multiplier 10% → ×1.0 · 20% → ×1.2 · 30% → ×1.4; backed = min(1, strength × multiplier); decayed edges then × 0.5. |
 | Earned trust | New relationship 0.2; then old + 0.10 × (1 − old); cap 0.7; ≤ 2 increases per pair per 30 days; decays ×0.5 after 12 idle months, expires after 18. Only exchanges both confirmed in full. |
 | Relationship trust | Strongest path: max Π edge strength (Dijkstra on −log), pair = 1 − (1 − vouch)(1 − earned); ties: fewer hops, then handles. |
 | Jury | Existing filters + available (jury opt-in, < 2 open assignments); rank by closeness = max(relationship trust to each party), rounded to 0.01, lowest first; ties by seeded shuffle. |

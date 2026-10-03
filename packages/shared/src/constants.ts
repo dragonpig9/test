@@ -24,7 +24,7 @@ export const TOPIC_TAGS = ['Coding', 'Tutoring', 'Language practice', 'Moving an
 export type TopicTag = (typeof TOPIC_TAGS)[number];
 
 export const VOUCH_STRENGTHS = [0.4, 0.7, 1.0] as const;
-export const LIABILITY_OPTIONS = [10, 25, 50] as const;
+export const LIABILITY_OPTIONS = [10, 20, 30] as const;
 
 /** Formats hundredths of a credit as a human string, e.g. 150 -> "1.5". */
 export function formatCredits(units: number): string {

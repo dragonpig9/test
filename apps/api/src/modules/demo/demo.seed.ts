@@ -143,21 +143,21 @@ export async function seedDemo(prisma: PrismaClient) {
   };
 
   // 2. Invitations (the bootstrap waiver applies while there are fewer than 6 members).
-  await join('alice', 'ben', 1.0, 25, '2024-10-01T10:00:00Z');
+  await join('alice', 'ben', 1.0, 20, '2024-10-01T10:00:00Z');
   await history('ben', 'alice', 1, 'Cooking', 'Batch-cooked soup for the allotment open day', '2024-10-20T12:00:00Z');
   await join('alice', 'priya', 0.7, 10, '2024-11-01T10:00:00Z');
   await history('ben', 'priya', 1, 'Other', 'Help moving a bookcase', '2024-12-05T15:00:00Z');
-  await join('priya', 'kofi', 1.0, 25, '2025-01-10T10:00:00Z');
+  await join('priya', 'kofi', 1.0, 20, '2025-01-10T10:00:00Z');
   await history('priya', 'alice', 2, 'Design', 'Poster for the seed swap', '2025-01-20T10:00:00Z');
   await join('kofi', 'lena', 0.7, 10, '2025-02-01T10:00:00Z');
   await history('priya', 'kofi', 1, 'Tutoring', 'Spreadsheet basics for the repair café inventory', '2025-02-15T18:00:00Z');
   // An extra DIRECT vouch Ben → Lena that later expires (no interaction for 18 months).
   const bl = await step('2025-03-01T10:00:00Z', 'ben', (tx, ctx) => proposeVouch(tx, ctx, ids.ben, { voucheeId: ids.lena, strength: 0.4, liabilityPct: 10, acknowledgeLiability: true }));
   await step('2025-03-02T10:00:00Z', 'lena', (tx, ctx) => respondToVouch(tx, ctx, bl.id, ids.lena, true));
-  await join('alice', 'mei', 0.7, 25, '2025-03-15T10:00:00Z');
+  await join('alice', 'mei', 0.7, 10, '2025-03-15T10:00:00Z');
   await history('priya', 'ben', 1, 'Design', 'CV layout', '2025-03-20T17:00:00Z');
   await history('ben', 'kofi', 1, 'Other', 'Carrying workbenches to the repair café', '2025-04-10T09:00:00Z');
-  await join('ben', 'sam', 0.7, 25, '2025-04-25T10:00:00Z');
+  await join('ben', 'sam', 0.7, 10, '2025-04-25T10:00:00Z');
   await join('priya', 'tomas', 0.4, 10, '2025-05-25T10:00:00Z');
   await history('kofi', 'lena', 2, 'Equipment repair', 'Fix bicycle gears and brakes', '2025-06-15T10:00:00Z');
   await history('tomas', 'alice', 1, 'Gardening', 'Weeding the herb beds', '2025-07-10T08:00:00Z');

@@ -25,7 +25,7 @@ export function EdgeDetails({ edge, members, onClose }: { edge: EdgeView; member
         items={[
           ['Direction', `${a?.displayName} → ${b?.displayName} (voucher → vouched member)`],
           ['Status', <StatusChip key="s" status={edge.status} />],
-          ['Strength', edge.decayed ? `${edge.strength} stored, ${edge.effectiveStrength} effective (decayed)` : `${edge.effectiveStrength}`],
+          ['Strength', edge.decayed ? `${edge.strength} stored, ${edge.effectiveStrength} effective (decayed)` : edge.effectiveStrength !== edge.strength ? `${edge.strength} stored, ${edge.effectiveStrength} backed by ${edge.liabilityPct}% liability` : `${edge.effectiveStrength}`],
           ['Liability', `${edge.liabilityPct}% → max ${edge.maxPenaltyPoints} credibility points for ${a?.displayName}`],
           ['Created', fmtDate(edge.createdAt, false)],
           ['Age', `${edge.ageDays} days`],

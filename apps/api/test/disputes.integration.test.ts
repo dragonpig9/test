@@ -88,7 +88,7 @@ describe('disputes and attestation', () => {
     expect(penalties.map((p) => [p.memberId, p.kind, p.points]).sort()).toEqual(
       [
         [ids.c, 'NONPERFORMANCE_FINDING', 15],
-        [ids.b, 'VOUCH_LIABILITY', 5],
+        [ids.b, 'VOUCH_LIABILITY', 2], // fixture vouches carry 10% liability: 10% × 20
       ].sort(),
     );
     // No cascade to the voucher's voucher (a).
