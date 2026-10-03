@@ -72,6 +72,15 @@ The **Demo guide** (top bar → "Demo guide", also on the Overview page) tracks 
 | 14 | Mei | **My Credibility** shows "Invite new members" unlocked (≥ 40) → Trust Network → *My vouches & invitations* → Create invitation | Permission earned from records |
 | 15 | Mei | **Overview** → 🔔 **Notifications** → **Account** | Home-screen notifications (accepted, settled, trust change, unlocked tasks, dispute, outcome), mark all as read, and the **email outbox** previews (demo mode never sends real email) |
 
+New features (development: the demo bar also shows **Next 00:00 HKT** and **Run daily job**):
+
+| Feature | How to demonstrate |
+| --- | --- |
+| Student registration | Sign out → Join with an invitation code → *Register as a student*: pick HKU, type `chantaiman`, pick CUHK (suffix changes, username kept), paste `x@connect.hku.hk` (only `x` stays), tick the declaration. Existing members: **My Profile → Student details** (Mei is a seeded CityU student, unverified) → *Send a code* → copy it from the development preview → *Verify*. Change the university: the status returns to *not verified*. |
+| Leaderboard | Overview → 好友活躍排行榜. Settle the Mei ↔ Sam exchanges (demo steps 5–7): both gain 1 point (two exchanges, same day, same person = 1). |
+| Pool | Overview → Community Credit Pool shows 5 credits (Tomás's expired credits). After step 7, press **Next 00:00 HKT**: Mei and Sam are tied on 1 point → ceil(2 ÷ 2) = 1 recipient chosen by the date seed, paid 5; **Run daily job** again says nothing was repeated. |
+| Negative-balance reminders | The first daily run notifies close friends of seeded members negative for 50+ days (e.g. Mei sees “Alice Okafor could use an opportunity…”). |
+
 Edge cases to show:
 - **Credit floor:** switch to Ben → My Exchanges → Kofi's 3h washing-machine repair → *Accept*. The backend blocks it because Ben's available balance would go from −3 to −6, below −5.
 - **Insufficient attestors:** Disputes → *All community* → Kofi–Lena kettle dispute. It is in **NEEDS_REVIEW** with frozen credits, a blocker ("only 2 eligible for 3 panel seats") and a next action.
@@ -107,7 +116,7 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 - **Trust graph and path finder.** An undirected view of active edges. BFS shortest path with deterministic tie-breaks (highest strength, then alphabetical handles). Connection strength is the product of effective strengths. Decay ×0.5 after 12 months without a settled exchange between the pair; expiry after 18 months. Disconnected members are shown, and a keyboard-accessible table view sits alongside the graph.
 - **Listings** (offers and requests) are kept separate from **exchanges**. Discovery filters by category and active reachability. Exchange terms cover provider and recipient, deliverable, duration, scheduled time, punctuality condition, credit amount (1h = 1 credit), an optional gift bonus from the recipient (shown separately), cancellation notice and terms, and the confirmation deadline. Terms are versioned: an edit resets the other side's acceptance, and nothing can change after acceptance.
 - **Ledger.** Balanced double-entry transactions with system accounts for expiry and adjustments. Reservations on acceptance, under a row-level lock so concurrent acceptances cannot bypass the −5 floor. Settlement is atomic and duplicate-proof (state check, row lock and unique idempotency key). Disputes freeze reservations; refuted disputes release them without payment. Cancellation and partial completion are supported.
-- **Credit expiry.** Fully implemented as a dated-lot model. Earned positive credits expire after 12 months, oldest are spent first, debts never expire, and units backing open reservations are protected. Each expiry posts a balanced EXPIRY transaction with an explanation. The sweep runs on clock advance (or `POST /api/demo/sweeps`). There is no background scheduler, so in a real deployment it would run from cron.
+- **Credit expiry.** Fully implemented as a dated-lot model. Earned positive credits expire after 12 months, oldest are spent first, debts never expire, and units backing open reservations are protected. Each expiry posts a balanced EXPIRY transaction into the **Community Credit Pool**. It runs in the daily job (00:00 Hong Kong) and on demo clock advance.
 - **Credibility.** A deterministic five-factor formula with a breakdown, calculation strings, history snapshots, final-finding penalties, permissions and "to unlock" guidance. Thresholds gate inviting/vouching (40), attesting (30), the guarantor requirement (< 20) and restricted categories (Equipment repair, 25).
 - **Disputes and attestation.** One state machine. Eligibility rules with per-candidate reasons. Seeded random selection with the seed recorded (fixed in demo mode). Single attestor → panel of 3 on *Unclear* → majority of 2. **NEEDS_REVIEW** for insufficient candidates, no quorum or a split panel, with a next action. Members can retry selection, resolve mutually, recuse, or declare conflicts.
 - **Withdrawal.** Remove listings, cancel, partial completion, revoke vouches, leave the community. Leaving blocks new commitments but keeps accepted exchanges, disputes, debts and history.
@@ -119,6 +128,10 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 - **Less-connected jury.** Existing filters plus availability, then lowest closeness = max(relationship trust to either party); ties randomised by the recorded seed; snapshot of reasons stored with every selection.
 - **Profiles.** Photo URL, intro, affiliation, neighbourhood, languages, skills and tiers, availability, completed services, credibility breakdown and contact-verification status — self-reported, verified and record-based data shown separately. Email, phone and address private by default.
 - **Notifications.** Persistent in-app notifications (bell, list, home-screen card, mark read) written after commit with dedupe keys; optional email via a persisted outbox with retries and a Gmail/SMTP adapter; per-member opt-in and categories.
+- **Student registration.** “Register as a student” on the Join page (and *Student details* on My Profile for existing members): eight university buttons (HKU, CUHK, HKUST, PolyU, CityU, HKBU, Lingnan, EdUHK) with full names, keyboard and touch friendly; username field with the university's domain as a fixed suffix (placeholder `XXX`), full-address preview, no duplicate domain or extra `@`. The mapping lives only in `packages/shared/src/universities.ts`; the API re-validates it. Ownership is proven by an expiring, single-use 6-digit code; changing university/email resets verification; a current-student declaration is stored separately. Development-only preview codes are never labelled verified.
+- **好友活躍排行榜 (friends activity leaderboard)** on the home screen: you + accepted direct friends (active vouches or earned relationships, minus declared conflicts), rank, avatar, university, points, “You” highlight and the rules. One shared scoring function: 1 point per distinct counterparty per Hong Kong day from settled exchanges in the last 7 days; at most 2 points per pair per window (the earned-trust anti-abuse limit). Separate from credits, credibility and relationship strength.
+- **Community Credit Pool and daily job.** Expired credits flow into a never-expiring pool. Every day at 00:00 Asia/Hong_Kong the server (no browser needed) expires due credits, snapshots activity for the whole community, and pays the top ceil(active ÷ 2) members equally: floor(pool ÷ recipients) hundredths each, remainder retained (108 ÷ 456 → 0.23 each, 104.88 paid, 3.12 kept). Ties use a date-seeded shuffle; inputs are recorded. One transaction, unique run/distribution/grant rows, so retries never pay twice.
+- **Close-friend reminders.** A continuous negative *posted* balance period is tracked on every ledger posting (partial repayment keeps the timer, reaching 0 resets it). After the daily redistribution, members negative for more than 50 days get up to 3 closest friends (relationship strength) notified once per period — no balance or task details — or a private reminder if no friend qualifies.
 - **Debug panel** (development builds only). Thirteen tabs backed by `/api/debug/*` (incl. task eligibility, pricing, trust updates, jury candidates, notifications & email). Errors carry a human message, a stable code, the module and a correlation id. Password hashes and tokens are never returned.
 
 ### Honest limitations
@@ -128,7 +141,9 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 - **NEEDS_REVIEW** has no admin/steward override by design (the system never picks a winner). The only exits are a re-run selection or mutual agreement, so a dispute can stay frozen indefinitely in a very small community.
 - **Mutual resolution outcomes carry no penalty**, even "refuted", because they are a settlement between the parties rather than a finding.
 - **No reversal workflow for settled exchanges.** Disputes must be opened before settlement.
-- Sweeps (expiry, vote deadlines) run on clock advance or on demand, not on a background schedule.
+- Vote-deadline sweeps run on clock advance or on demand. Credit expiry runs in the daily job; on hosts that sleep idle services (Render free) the in-process timer can miss midnight — use an always-on plan or the cron script (docs/DEPLOYMENT.md).
+- University email verification needs a real email provider in production (`EMAIL_PROVIDER`); the on-screen code preview is development-only. Email ownership does not prove enrolment, so enrolment stays self-declared.
+- Expired credits recorded before the pool existed stay on the legacy `SYSTEM_EXPIRY` account; only new expiries feed the pool.
 - Evidence is text only (no file uploads).
 - **Phone verification is not implemented** (no SMS provider): phones always show "not verified". Profile photos are an https URL, not an upload.
 - In demo mode without email credentials, contact verification codes appear in the on-screen email preview, so those addresses are labelled **demo-verified** (they count for high-trust tasks only in demo mode).
@@ -141,7 +156,7 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 
 ---
 
-## Policy defaults (`policy-2026.10-v2`, all in `apps/api/src/config/policy.ts`)
+## Policy defaults (`policy-2026.10-v3`, all in `apps/api/src/config/policy.ts`)
 
 | Area | Default |
 | --- | --- |
@@ -152,6 +167,10 @@ packages/shared/src/  types/ (DTOs, error codes), validation/ (zod)
 | Earned trust | New relationship 0.2; then old + 0.10 × (1 − old); cap 0.7; ≤ 2 increases per pair per 30 days; decays ×0.5 after 12 idle months, expires after 18. Only exchanges both confirmed in full. |
 | Relationship trust | Strongest path: max Π edge strength (Dijkstra on −log), pair = 1 − (1 − vouch)(1 − earned); ties: fewer hops, then handles. |
 | Jury | Existing filters + available (jury opt-in, < 2 open assignments); rank by closeness = max(relationship trust to each party), rounded to 0.01, lowest first; ties by seeded shuffle. |
+| Daily job | 00:00 `Asia/Hong_Kong` (`POLICY.schedule`). Order: expiry → activity snapshot + pool distribution → negative-balance reminders. |
+| Activity points | Window 7 HK days (`POLICY.activity.windowDays`); 1 point per distinct counterparty per day; ≤ 2 per pair per window. |
+| Community pool | Recipients = ceil(active ÷ 2); payment = floor(pool ÷ recipients) in 0.01 units; minimum 0.01; remainder retained. |
+| Negative balance | Reminder when negative for **more than** 50 days (`POLICY.negativeBalance`), up to 3 closest friends, once per period. |
 | Notifications | After-commit, deduplicated; email opt-in, verified address only, retries 1 m / 5 m / 30 m / 2 h then FAILED. |
 
 ## The fairness rule

@@ -13,7 +13,8 @@ export async function memberAccount(db: Db, memberId: string) {
 }
 
 export async function systemAccount(tx: Tx, type: Exclude<LedgerAccountType, 'MEMBER'>) {
-  const name = type === 'SYSTEM_EXPIRY' ? 'System: expired credits' : 'System: administrative adjustments';
+  const name =
+    type === 'SYSTEM_EXPIRY' ? 'System: expired credits (legacy)' : type === 'SYSTEM_COMMUNITY_POOL' ? 'Community Credit Pool' : 'System: administrative adjustments';
   return (await tx.ledgerAccount.findFirst({ where: { type } })) ?? tx.ledgerAccount.create({ data: { type, name } });
 }
 

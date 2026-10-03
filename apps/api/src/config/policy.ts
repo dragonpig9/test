@@ -6,7 +6,7 @@
  * Units: credits are hundredths (100 = 1 credit = 1 hour of standard service).
  */
 export const POLICY = {
-  version: 'policy-2026.10-v2',
+  version: 'policy-2026.10-v3',
 
   credits: {
     /** Members may not commit to obligations that would push available balance below this. */
@@ -182,6 +182,53 @@ export const POLICY = {
     /** Demo mode uses this fixed seed so selections are reproducible. */
     demoSeed: 'commonhours-demo-2026',
   },
+
+  /** Calendar used for "days": activity points, the scoring window and the daily job (00:00 local). */
+  schedule: {
+    timezone: 'Asia/Hong_Kong',
+    /** Local hour at which the daily job runs (0 = 00:00). */
+    dailyJobHour: 0,
+    /** A RUNNING daily-job record older than this (wall clock) is treated as crashed and re-claimed. */
+    staleRunMinutes: 15,
+  },
+
+  /** Student registration (university list + email domains: packages/shared/src/universities.ts). */
+  student: {
+    codeMinutes: 30,
+    maxAttempts: 5,
+  },
+
+  /**
+   * Activity points (one shared scoring function for the friends leaderboard AND the pool):
+   *   1 point per distinct counterparty per local calendar day, from SETTLED exchanges in the window.
+   * Logins, page views, listings, cancelled/declined/released exchanges, unresolved disputes and pool
+   * rewards never score. Activity points are separate from credits, credibility and relationship strength.
+   */
+  activity: {
+    windowDays: 7,
+    pointsPerCounterpartyPerDay: 1,
+    /**
+     * Existing anti-abuse rule reused from earned trust (earnedTrust.maxCountedPerWindow): a pair of
+     * members can earn each other at most this many points per scoring window. null = no cap.
+     */
+    maxPointsPerPairPerWindow: 2 as number | null,
+  },
+
+  /** Community Credit Pool: receives expired credits; the daily job redistributes it. The pool never expires. */
+  communityPool: {
+    /** recipients = ceil(activeUsers × numerator / denominator) */
+    recipientShareNumerator: 1,
+    recipientShareDenominator: 2,
+    /** Smallest payment in ledger units (hundredths): 1 = 0.01 credit. Smaller → the pool is retained. */
+    minPaymentUnits: 1,
+  },
+
+  /** Close-friend reminders after a long continuous negative POSTED balance. */
+  negativeBalance: {
+    /** Strictly more than this many days negative triggers the reminder (exactly 50 does not). */
+    reminderAfterDays: 50,
+    maxFriendsNotified: 3,
+  },
 } as const;
 
 export type Policy = typeof POLICY;
@@ -230,4 +277,12 @@ export const RULES = {
   CONFLICT: 'ATTEST.CONFLICT.v1',
   WITHDRAW_LEAVE: 'WITHDRAWAL.LEAVE.v1',
   DEMO: 'DEMO.v1',
+  STUDENT_DETAILS: 'STUDENT.DETAILS.v1',
+  STUDENT_VERIFY: 'STUDENT.EMAIL_VERIFICATION.v1',
+  ACTIVITY_SCORE: 'ACTIVITY.DISTINCT_COUNTERPARTY_DAY.v1',
+  EXPIRY_TO_POOL: 'LEDGER.CREDIT_EXPIRY_TO_POOL.v2',
+  POOL_DISTRIBUTE: 'POOL.DAILY_REDISTRIBUTION.v1',
+  NEGATIVE_BALANCE: 'CREDITS.NEGATIVE_BALANCE_PERIOD.v1',
+  NEGATIVE_REMINDER: 'CREDITS.NEGATIVE_BALANCE_REMINDER.v1',
+  DAILY_JOB: 'JOBS.DAILY.v1',
 } as const;

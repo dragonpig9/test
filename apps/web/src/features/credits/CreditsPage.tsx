@@ -117,7 +117,7 @@ export function CreditsPage() {
                   <tr key={e.id}>
                     <td className="whitespace-nowrap py-2 pr-3">{fmtDate(e.effectiveAt, false)}</td>
                     <td className="pr-3">
-                      <StatusChip status={e.kind === 'EXPIRY' ? 'EXPIRED' : 'SETTLED'} label={e.kind.toLowerCase()} />
+                      <StatusChip status={e.kind === 'EXPIRY' ? 'EXPIRED' : e.kind === 'POOL_DISTRIBUTION' ? 'ACCEPTED' : 'SETTLED'} label={e.kind === 'POOL_DISTRIBUTION' ? 'pool reward' : e.kind.toLowerCase()} />
                     </td>
                     <td className="pr-3">{e.counterparty}</td>
                     <td className="pr-3 text-slate-600">

@@ -16,9 +16,9 @@ const pendingAfterCommit = new AsyncLocalStorage<AfterCommit[]>();
  * Callbacks registered with `afterCommit` inside `fn` run only once the transaction has
  * committed; if it rolls back they are discarded.
  */
-export async function withTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+export async function withTx<T>(fn: (tx: Tx) => Promise<T>, opts: { timeoutMs?: number } = {}): Promise<T> {
   const queue: AfterCommit[] = [];
-  const result = await pendingAfterCommit.run(queue, () => prisma.$transaction(fn, { timeout: 20_000, maxWait: 10_000 }));
+  const result = await pendingAfterCommit.run(queue, () => prisma.$transaction(fn, { timeout: opts.timeoutMs ?? 20_000, maxWait: 10_000 }));
   for (const cb of queue) {
     // Side effects (notifications, email outbox) must never undo or fail a committed change.
     try {

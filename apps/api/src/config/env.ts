@@ -18,6 +18,14 @@ export const env = {
   // Built web app to serve from the API process. Set SERVE_WEB=true (the Render blueprint does); off in dev, where Vite serves it.
   webDist: bool(process.env.SERVE_WEB, false) ? fileURLToPath(new URL('../../../web/dist', import.meta.url)) : null,
   isTest: process.env.VITEST === 'true' || process.env.NODE_ENV === 'test',
+  /**
+   * Development-only shortcuts: student email codes shown in the on-screen preview (labelled
+   * "dev-preview", never "verified"), and the demo bar's "Run daily job" / "Next 00:00" controls.
+   * Never on when NODE_ENV=production, even with DEMO_MODE=true.
+   */
+  devShortcuts: process.env.NODE_ENV !== 'production' && bool(process.env.DEMO_MODE, true),
+  /** In-process daily job scheduler (00:00 Asia/Hong_Kong). Turn off when an external cron runs scripts/run-daily-job.ts. */
+  dailyJobScheduler: bool(process.env.DAILY_JOB_SCHEDULER, true),
   /** Public URL used for links in emails. */
   appBaseUrl: (process.env.APP_BASE_URL ?? process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(/\/$/, ''),
   /**

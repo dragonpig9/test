@@ -6,6 +6,7 @@ import { MemberChip } from '../../components/MemberChip';
 import { useAuth } from '../../lib/auth';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
+import { StudentDetailsFields, studentInput, useStudentDraft } from '../student/StudentDetailsFields';
 import { join, previewInvitation } from './api';
 
 /** Joining requires accepting the community terms AND the vouch terms shown here. */
@@ -16,8 +17,19 @@ export function JoinPage() {
   const inv = useQuery({ queryKey: ['invite', submittedCode], queryFn: () => previewInvitation(submittedCode), enabled: !!submittedCode, retry: false });
   const { signIn } = useAuth();
   const [form, setForm] = useState({ displayName: '', handle: '', email: '', password: '', acceptCommunityTerms: false, acceptVouchTerms: false });
+  const [asStudent, setAsStudent] = useState(false);
+  const [student, setStudent] = useStudentDraft();
+  const studentDetails = asStudent ? studentInput(student) : undefined;
   const doJoin = useAction(
-    () => join({ code: submittedCode, ...form, acceptCommunityTerms: form.acceptCommunityTerms as true, acceptVouchTerms: form.acceptVouchTerms as true }),
+    () =>
+      join({
+        code: submittedCode,
+        ...form,
+        // Student registration: the university email is the login email (the API checks the domain again).
+        ...(studentDetails ? { email: studentDetails.studentEmail, student: studentDetails } : {}),
+        acceptCommunityTerms: form.acceptCommunityTerms as true,
+        acceptVouchTerms: form.acceptVouchTerms as true,
+      }),
     (r) => signIn(r.token),
   );
   const i = inv.data?.invitation;
@@ -88,9 +100,33 @@ export function JoinPage() {
               <Field label="Handle" htmlFor="handle" hint="lowercase, e.g. noor">
                 <input id="handle" className="input" value={form.handle} onChange={(e) => setForm({ ...form, handle: e.target.value.toLowerCase() })} required />
               </Field>
-              <Field label="Email" htmlFor="jemail">
-                <input id="jemail" className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-              </Field>
+              <fieldset className="sm:col-span-2">
+                <legend className="label">Account type</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { v: false, t: 'Register as a community member', d: 'Use any email address.' },
+                    { v: true, t: 'Register as a student', d: 'Use your university email; verify it with a code.' },
+                  ].map((o) => (
+                    <label key={String(o.v)} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm ${asStudent === o.v ? 'border-brand-700 bg-brand-50 ring-2 ring-brand-600' : 'border-slate-300'}`}>
+                      <input type="radio" name="account-type" className="mt-1" checked={asStudent === o.v} onChange={() => setAsStudent(o.v)} />
+                      <span>
+                        <span className="font-medium">{o.t}</span>
+                        <span className="block text-xs text-slate-500">{o.d}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              {asStudent ? (
+                <div className="sm:col-span-2">
+                  <StudentDetailsFields draft={student} onChange={setStudent} />
+                  <p className="mt-2 text-xs text-slate-500">After joining, a one-time code is sent to this address. “University email verified” appears only after you enter it.</p>
+                </div>
+              ) : (
+                <Field label="Email" htmlFor="jemail">
+                  <input id="jemail" className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                </Field>
+              )}
               <Field label="Password" htmlFor="jpw" hint="At least 8 characters">
                 <input id="jpw" className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
               </Field>
@@ -104,7 +140,7 @@ export function JoinPage() {
                 <ErrorBox error={doJoin.error} title="Could not join" />
               </div>
               <div className="sm:col-span-2">
-                <Button type="submit" busy={doJoin.isPending} disabled={!form.acceptCommunityTerms || !form.acceptVouchTerms}>
+                <Button type="submit" busy={doJoin.isPending} disabled={!form.acceptCommunityTerms || !form.acceptVouchTerms || (asStudent && !studentDetails)}>
                   Join and activate the vouch
                 </Button>
               </div>

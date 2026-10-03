@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
 import { claimSkill, confirmEmailCode, requestEmailCode, requestPhoneCode, reviewSkill, updateProfile, useOutbox, useProfile, useReviewableClaims, useSkills } from './api';
+import { StudentStatusCard } from '../student/StudentStatusCard';
 import { ProfileCard, VerificationPill } from './ProfileCard';
 
 export function ProfilePage() {
@@ -46,6 +47,7 @@ export function ProfilePage() {
             <ProfileCard p={p} />
           </Card>
           <VerificationCard p={p} />
+          <StudentStatusCard />
         </div>
       </div>
     </div>
@@ -150,7 +152,7 @@ function VerificationCard({ p }: { p: ProfileView }) {
   const confirm = useAction(() => confirmEmailCode(code), () => setCode(''));
   const phone = useAction(() => requestPhoneCode());
   const outbox = useOutbox();
-  const latest = outbox.data?.emails.find((e) => e.subject.includes('verify'));
+  const latest = outbox.data?.emails.find((e) => e.subject.includes('verify your contact email'));
   return (
     <Card title="Contact verification">
       <div className="mb-3 flex flex-wrap gap-2">

@@ -28,10 +28,10 @@ export async function requestEmailVerification(tx: Tx, ctx: Ctx, memberId: strin
   if (mode === 'disabled') {
     throw new AppError('VERIFICATION_FAILED', 'Email delivery is not configured on this server, so a verification code cannot be sent.', MODULE);
   }
-  await tx.emailVerification.updateMany({ where: { memberId, consumedAt: null }, data: { consumedAt: ctx.now } });
+  await tx.emailVerification.updateMany({ where: { memberId, purpose: 'contact', consumedAt: null }, data: { consumedAt: ctx.now } });
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const v = await tx.emailVerification.create({
-    data: { memberId, address, codeHash: hash(memberId, code), expiresAt: addMinutes(ctx.now, CODE_MINUTES), createdAt: ctx.now },
+    data: { memberId, purpose: 'contact', address, codeHash: hash(memberId, code), expiresAt: addMinutes(ctx.now, CODE_MINUTES), createdAt: ctx.now },
   });
   await recordAudit(tx, ctx, {
     module: MODULE,
@@ -54,7 +54,7 @@ export async function requestEmailVerification(tx: Tx, ctx: Ctx, memberId: strin
 export async function confirmEmailVerification(tx: Tx, ctx: Ctx, memberId: string, code: string) {
   const m = await getMember(tx, memberId);
   const address = notificationAddress(m);
-  const v = await tx.emailVerification.findFirst({ where: { memberId, consumedAt: null }, orderBy: { createdAt: 'desc' } });
+  const v = await tx.emailVerification.findFirst({ where: { memberId, purpose: 'contact', consumedAt: null }, orderBy: { createdAt: 'desc' } });
   if (!v || v.address !== address) throw new AppError('VERIFICATION_FAILED', 'No active code for your current contact email. Send a new code.', MODULE);
   if (v.expiresAt.getTime() < ctx.now.getTime()) throw new AppError('VERIFICATION_FAILED', 'This code has expired. Send a new code.', MODULE);
   if (v.attempts >= MAX_ATTEMPTS) throw new AppError('VERIFICATION_FAILED', 'Too many wrong attempts. Send a new code.', MODULE);

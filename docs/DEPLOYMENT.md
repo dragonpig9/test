@@ -55,6 +55,17 @@ Functions in `apps/web/functions` deploy automatically.
 2. Click **Mei Chen**, then **Trust Network**. You should see the path Mei → Sam with strength 0.49.
 3. If the login page shows no members, the API isn't reachable. Check `/api/health` on Render, and `API_ORIGIN` if you use Pages.
 
+## Daily job and email (needed for the community pool and student verification)
+
+**Daily job (00:00 Asia/Hong_Kong).** The API starts an in-process scheduler (`DAILY_JOB_SCHEDULER=true`, the default) that checks every minute and runs the job for the current Hong Kong date once. That works on any always-on instance. **Render's free plan sleeps idle services**, so the timer will not fire at midnight there. Pick one:
+
+- an always-on instance (Render *Starter* or above), or
+- a **Render Cron Job** (paid) with schedule `0 16 * * *` (16:00 UTC = 00:00 HKT), the same repo, build `npm ci`, command `npx tsx apps/api/scripts/run-daily-job.ts`, the same `DATABASE_URL`; then set `DAILY_JOB_SCHEDULER=false` on the web service (optional, both together are safe: each date runs once).
+
+Any other cron (GitHub Actions, a VM's crontab) can run the same script with `DATABASE_URL` set. A missed midnight is caught up on the next run.
+
+**University email codes need real email.** With `NODE_ENV=production` the development preview is off, so student verification codes can only be sent when `EMAIL_PROVIDER` (Gmail or SMTP) is configured; otherwise the API answers "Email delivery is not configured". Also check that your sender is not blocked by the university mail systems.
+
 ## Notes and risks
 - **Demo mode is public.** Anyone with the link can switch accounts or reset the data. That's intended for judging, but don't use it for real members. Set `DEMO_MODE=false` for a real pilot.
 - **Reset after rehearsing:** use the **Reset demo** button (or `curl -X POST https://<site-url>/api/demo/reset`). Only one reset runs at a time, with a 15-second cooldown, so a public link can't be used to keep the database constantly reseeding.

@@ -5,7 +5,11 @@ import { Prisma } from '@prisma/client';
 import { env } from './config/env';
 import { AppError } from './core/errors';
 import { logRequest } from './core/request-log';
+import { activityRouter } from './modules/activity/activity.routes';
 import { auditRouter } from './modules/audit/audit.routes';
+import { communityPoolRouter } from './modules/community-pool/community-pool.routes';
+import { dailyJobRouter } from './modules/daily-job/daily-job.routes';
+import { studentRouter } from './modules/student/student.routes';
 import { contextMiddleware, requireAuth } from './modules/auth/auth.middleware';
 import { authRouter } from './modules/auth/auth.routes';
 import { conflictsRouter, disputesRouter } from './modules/attestation/attestation.routes';
@@ -81,6 +85,10 @@ export function createApp() {
   authed.use('/notifications', notificationsRouter);
   authed.use('/pricing', pricingRouter);
   authed.use('/eligibility', eligibilityRouter);
+  authed.use('/students', studentRouter);
+  authed.use('/activity', activityRouter);
+  authed.use('/community-pool', communityPoolRouter);
+  authed.use('/daily-job', dailyJobRouter);
   if (env.debugEndpoints) authed.use('/debug', debugRouter);
   app.use('/api', authed);
 

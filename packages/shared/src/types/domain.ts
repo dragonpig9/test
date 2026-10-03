@@ -23,4 +23,5 @@ export type AssignmentStatus = 'ASSIGNED' | 'VOTED' | 'RECUSED' | 'MISSED' | 'NO
 export type TrustTier = 'STANDARD' | 'RESTRICTED' | 'HIGH_TRUST';
 export type SkillTier = 'STANDARD' | 'SKILLED' | 'ADVANCED' | 'SPECIALIST';
 export type EmailStatus = 'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | 'PREVIEW' | 'SKIPPED';
-export type NotificationCategory = 'invitations' | 'exchanges' | 'reminders' | 'credits' | 'trust' | 'disputes' | 'jury';
+export type NotificationCategory = 'invitations' | 'exchanges' | 'reminders' | 'credits' | 'trust' | 'disputes' | 'jury' | 'community';
+export type AccountType = 'STANDARD' | 'STUDENT';

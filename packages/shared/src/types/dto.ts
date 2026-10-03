@@ -29,6 +29,9 @@ export interface MemberSummary {
   affiliation?: string;
   neighborhood?: string;
   contactVerification?: 'VERIFIED' | 'DEMO_VERIFIED' | 'UNVERIFIED';
+  /** Student accounts: university code (public) and whether the university email was verified. */
+  university?: string | null;
+  universityEmailVerified?: boolean;
 }
 
 export interface MemberProfile extends MemberSummary {

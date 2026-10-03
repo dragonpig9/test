@@ -20,8 +20,12 @@ export async function resetDemo() {
  * vouch expiry, credit expiry, attestation deadlines, and score refresh (vouch decay).
  */
 export async function advanceClock(tx: Tx, ctx: Ctx, days: number) {
+  return advanceClockTo(tx, ctx, addDays(ctx.now, days), `${days} day(s)`);
+}
+
+/** Moves the simulated clock to `after` (≥ now) and runs the time-based sweeps there. */
+export async function advanceClockTo(tx: Tx, ctx: Ctx, after: Date, label: string) {
   const before = ctx.now;
-  const after = addDays(before, days);
   await tx.systemState.upsert({ where: { id: 1 }, create: { id: 1, simulatedNow: after }, update: { simulatedNow: after } });
   const c2 = { ...ctx, now: after };
   await recordAudit(tx, c2, {
@@ -31,15 +35,15 @@ export async function advanceClock(tx: Tx, ctx: Ctx, days: number) {
     entityId: 'clock',
     before: { now: before },
     after: { now: after },
-    reason: `Simulated clock advanced by ${days} day(s) from the demo panel.`,
+    reason: `Simulated clock advanced by ${label} from the demo panel.`,
     ruleId: RULES.DEMO,
-    summary: `Simulated clock advanced ${days} day(s) to ${after.toISOString().slice(0, 16).replace('T', ' ')}`,
+    summary: `Simulated clock advanced ${label} to ${after.toISOString().slice(0, 16).replace('T', ' ')}`,
   });
   const vouches = await expireStaleVouches(tx, c2);
   const credits = await runCreditExpiry(tx, c2);
   const disputes = await sweepVoteDeadlines(tx, c2);
   const ids = (await tx.member.findMany({ select: { id: true } })).map((m) => m.id);
-  await refreshCredibility(tx, c2, ids, `clock advanced ${days} day(s)`);
+  await refreshCredibility(tx, c2, ids, `clock advanced ${label}`);
   const reminders = await sweepReminders(tx, c2);
   return { now: after, expiredVouches: vouches, expiredCredits: credits, disputesNeedingReview: disputes, reminders };
 }

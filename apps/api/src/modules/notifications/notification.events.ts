@@ -30,6 +30,7 @@ export const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   trust: 'Trust changes and newly unlocked tasks',
   disputes: 'Disputes and outcomes',
   jury: 'Jury assignments and voting deadlines',
+  community: 'Community pool and friends who could use an opportunity',
 };
 
 export function notify(intent: NotificationIntent | NotificationIntent[]) {

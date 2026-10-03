@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { useAuth } from '../../lib/auth';
 import { credits, fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
-import { advanceClock, resetDemo, switchAccount, useDemoState } from './api';
+import type { DailyJobRunView } from '@commonhours/shared';
+import { advanceClock, resetDemo, runDailyJobNow, switchAccount, toNextDailyRun, useDemoState } from './api';
+
+const jobText = (runs: DailyJobRunView[]) =>
+  runs.length ? ` Daily job: ${runs.map((r) => `${r.runDate} ${r.status.toLowerCase()}`).join(', ')}.` : '';
 
 /** Clearly labelled demo controls: simulated clock, account switcher and reset. All call real backend endpoints. */
 export function DemoBar({ onToggleGuide }: { onToggleGuide: () => void }) {
@@ -11,13 +15,17 @@ export function DemoBar({ onToggleGuide }: { onToggleGuide: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const sw = useAction((h: string) => switchAccount(h), (r) => signIn(r.token));
   const reset = useAction(() => resetDemo(), () => setMsg('Demo data reset to the seeded state.'));
-  const adv = useAction((d: number) => advanceClock(d), (r) =>
+  const clockMsg = (r: Awaited<ReturnType<typeof advanceClock>>) =>
     setMsg(
-      `Clock → ${fmtDate(r.now)}. ${r.expiredCredits.length ? `Expired: ${r.expiredCredits.map((e) => `${e.name} ${credits(e.amount)}`).join(', ')}. ` : ''}${r.expiredVouches ? `${r.expiredVouches} vouch(es) expired. ` : ''}${r.disputesNeedingReview ? `${r.disputesNeedingReview} dispute(s) hit their deadline.` : ''}`,
-    ),
+      `Clock → ${fmtDate(r.now)}. ${r.expiredCredits.length ? `Expired: ${r.expiredCredits.map((e) => `${e.name} ${credits(e.amount)}`).join(', ')}. ` : ''}${r.expiredVouches ? `${r.expiredVouches} vouch(es) expired. ` : ''}${r.disputesNeedingReview ? `${r.disputesNeedingReview} dispute(s) hit their deadline.` : ''}${jobText(r.dailyJobs ?? [])}`,
+    );
+  const adv = useAction((d: number) => advanceClock(d), clockMsg);
+  const midnight = useAction(() => toNextDailyRun(), clockMsg);
+  const job = useAction(() => runDailyJobNow(), (r) =>
+    setMsg(r.ran ? `Daily job ${r.run.runDate}: ${r.run.status.toLowerCase()}.` : `Daily job ${r.run.runDate} already ${r.run.status.toLowerCase()} — nothing was repeated (safe to retry).`),
   );
   if (!demo.data) return null;
-  const err = sw.error ?? reset.error ?? adv.error;
+  const err = sw.error ?? reset.error ?? adv.error ?? midnight.error ?? job.error;
   return (
     <div className="border-b border-amber-200 bg-amber-50 text-amber-950">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 text-sm">
@@ -32,6 +40,16 @@ export function DemoBar({ onToggleGuide }: { onToggleGuide: () => void }) {
             </button>
           ))}
         </span>
+        {demo.data.devShortcuts && (
+          <span className="flex items-center gap-1" role="group" aria-label="Development-only daily job controls">
+            <button type="button" className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100 disabled:opacity-50" disabled={midnight.isPending} onClick={() => midnight.mutate(undefined)} title={`Move the clock to ${fmtDate(demo.data.nextDailyRunAt)}, which runs the daily job`}>
+              Next 00:00 HKT
+            </button>
+            <button type="button" className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100 disabled:opacity-50" disabled={job.isPending} onClick={() => job.mutate(undefined)} title="Run today’s daily job now (development only; idempotent)">
+              Run daily job
+            </button>
+          </span>
+        )}
         <label className="flex items-center gap-2">
           <span className="font-medium">Demo account switcher:</span>
           <select className="rounded-md border border-amber-300 bg-white px-2 py-1 text-sm" value={me?.member.handle ?? ''} onChange={(e) => sw.mutate(e.target.value)} aria-label="Act as demo member">
@@ -61,7 +79,7 @@ export function DemoBar({ onToggleGuide }: { onToggleGuide: () => void }) {
       {(msg || err) && (
         <div className="mx-auto max-w-7xl px-4 pb-2 text-xs" role="status">
           {err ? <span className="text-red-800">{(err as Error).message}</span> : msg}
-          <button type="button" className="ml-2 underline" onClick={() => { setMsg(null); sw.reset(); reset.reset(); adv.reset(); }}>
+          <button type="button" className="ml-2 underline" onClick={() => { setMsg(null); sw.reset(); reset.reset(); adv.reset(); midnight.reset(); job.reset(); }}>
             dismiss
           </button>
         </div>

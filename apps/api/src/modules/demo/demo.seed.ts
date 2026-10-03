@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import type { CreateListingInput } from '@commonhours/shared';
-import { RULES } from '../../config/policy';
+import { POLICY, RULES } from '../../config/policy';
 import { makeCtx, type Ctx } from '../../core/context';
 import { addDays, addHours } from '../../core/dates';
 import { withTx, type Tx } from '../../core/db';
@@ -16,6 +16,8 @@ import { updatePreferences } from '../notifications/notification.service';
 import { createSkillClaim, reviewSkillClaim } from '../pricing/pricing.skills';
 import { confirmEmailVerification, requestEmailVerification } from '../profiles/profile.verification';
 import { createListing } from '../services/listing.service';
+import { currentRun } from '../daily-job/daily-job.schedule';
+import { setStudentDetails } from '../student/student.service';
 import { expireStaleVouches, proposeVouch, respondToVouch } from '../vouches/vouch.service';
 
 /** The simulated "today" the demo starts at. */
@@ -279,7 +281,13 @@ export async function seedDemo(prisma: PrismaClient) {
     }),
   );
 
-  // 7. Housekeeping at "today": expire stale vouches and old credits, refresh all scores.
+  // 6b. Mei (an existing member) adds her student details from her profile: CityU, unverified until
+  // she confirms a code. Enrolment is self-declared; nothing is pre-verified in the seed.
+  await step('2026-09-28T10:00:00Z', 'mei', (tx, ctx) =>
+    setStudentDetails(tx, ctx, ids.mei, { university: 'CityU', studentEmail: 'meichen3@my.cityu.edu.hk', currentStudentDeclaration: true }),
+  );
+
+  // 7. Housekeeping at "today": expire stale vouches and old credits (into the Community Credit Pool), refresh all scores.
   await step(DEMO_NOW, null, async (tx, ctx) => {
     await expireStaleVouches(tx, ctx);
     await runCreditExpiry(tx, ctx);
@@ -292,6 +300,13 @@ export async function seedDemo(prisma: PrismaClient) {
     where: { id: 1 },
     create: { id: 1, simulatedNow: DEMO_NOW, seededAt: new Date() },
     update: { simulatedNow: DEMO_NOW, seededAt: new Date() },
+  });
+  // Today's daily job (00:00 Hong Kong) is treated as already done for the seeded history, so the
+  // scripted demo is not changed behind the presenter's back. The first real run happens at the next
+  // 00:00 (demo bar: +1d or "Next 00:00 HKT"), distributing the pool to that week's most active members.
+  const today = currentRun(DEMO_NOW, POLICY.schedule.timezone, POLICY.schedule.dailyJobHour);
+  await prisma.dailyJobRun.create({
+    data: { runDate: today.runDate, scheduledFor: today.scheduledFor, status: 'COMPLETED', trigger: 'seed', startedAt: new Date(), completedAt: new Date(), steps: { note: 'Seeded state; credits that expired at seed time are waiting in the Community Credit Pool.' } },
   });
   return ids;
 }

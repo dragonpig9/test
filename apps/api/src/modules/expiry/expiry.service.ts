@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { formatCredits } from '@commonhours/shared';
 import { POLICY, RULES } from '../../config/policy';
 import type { Ctx } from '../../core/context';
@@ -8,12 +7,17 @@ import { postTransfer } from '../ledger/ledger.service';
 import { expirableAmount } from './expiry.rules';
 
 /**
- * Runs the credit-expiry sweep for every member. Each expiry is an explicit, balanced
- * ledger transaction: member −x, "System: expired credits" +x, with an explanation.
- * Safe to run repeatedly: once lots are consumed there is nothing left to expire.
+ * Runs the credit-expiry sweep for every member. Each expiry is an explicit, balanced ledger
+ * transaction: member −x, Community Credit Pool +x, with an explanation. The expiry duration is
+ * unchanged (POLICY.credits.lotExpiryMonths).
+ *
+ * Exactly once: the member's account row is locked and the expired lots are consumed in the same
+ * transaction, so a retry or a concurrent sweep finds nothing left to expire. Only positive lots can
+ * expire (spent credits and negative balances have no lots), and units backing ACTIVE or FROZEN
+ * (disputed) reservations are protected by `expirableAmount`.
  */
 export async function runCreditExpiry(tx: Tx, ctx: Ctx) {
-  const sys = await systemAccount(tx, 'SYSTEM_EXPIRY');
+  const sys = await systemAccount(tx, 'SYSTEM_COMMUNITY_POOL');
   const members = await tx.member.findMany({ select: { id: true, displayName: true } });
   const results: { memberId: string; name: string; amount: number }[] = [];
   for (const m of members) {
@@ -27,12 +31,13 @@ export async function runCreditExpiry(tx: Tx, ctx: Ctx) {
     const posted = await postedBalance(tx, acct.id);
     await postTransfer(tx, ctx, {
       kind: 'EXPIRY',
-      idempotencyKey: `expiry:${m.id}:${ctx.now.toISOString()}:${randomUUID()}`,
+      // Unique per member and state of their lots: the same expiry can never be posted twice.
+      idempotencyKey: `expiry:${m.id}:${ctx.now.toISOString()}:${lots.map((l) => `${l.id}=${l.remaining}`).sort().join(',')}`,
       fromMemberId: m.id,
       toAccountId: sys.id,
       amount,
-      explanation: `${formatCredits(amount)} credit(s) earned more than ${POLICY.credits.lotExpiryMonths} months ago expired (posted balance ${formatCredits(posted)} → ${formatCredits(posted - amount)}). Credits backing open reservations were protected.`,
-      ruleId: RULES.EXPIRY,
+      explanation: `${formatCredits(amount)} credit(s) earned more than ${POLICY.credits.lotExpiryMonths} months ago expired into the Community Credit Pool (posted balance ${formatCredits(posted)} → ${formatCredits(posted - amount)}). Credits backing open reservations were protected.`,
+      ruleId: RULES.EXPIRY_TO_POOL,
     });
     results.push({ memberId: m.id, name: m.displayName, amount });
   }
