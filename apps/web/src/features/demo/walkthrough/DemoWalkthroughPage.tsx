@@ -61,7 +61,10 @@ export function DemoWalkthroughPage() {
   if (wq.data) last.current = wq.data;
   const w = wq.data ?? last.current;
 
-  useEffect(() => window.scrollTo({ top: 0 }), [view]);
+  // Block body: newer Chrome returns a Promise from scrollTo, which React would call as the cleanup.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [view]);
   const go = (v: number | 'edge') => setParams(v === 1 ? {} : { chapter: String(v) });
 
   if (demoFlag.current === undefined && cfg.isLoading) return <Loading label="Opening the demo…" />;

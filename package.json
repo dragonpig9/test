@@ -15,7 +15,7 @@
     "db:migrate": "npm run db:migrate -w @commonhours/api",
     "db:seed": "npm run db:seed -w @commonhours/api",
     "db:setup": "npm run db:migrate && npm run db:seed",
-    "test": "npm run test -w @commonhours/api",
+    "test": "npm run test -w @commonhours/api && npm run test -w @commonhours/web",
     "typecheck": "npm run typecheck -w @commonhours/shared && npm run typecheck -w @commonhours/api && npm run typecheck -w @commonhours/web",
     "build": "npm run build -w @commonhours/web"
   },
