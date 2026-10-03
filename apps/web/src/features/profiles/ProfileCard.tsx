@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import type { ProfileView, VerificationStatus } from '@commonhours/shared';
 import { Avatar, DemoBadge } from '../../components/MemberChip';
 import { fmtDate } from '../../lib/format';
+import { BadgeShelf } from '../badges/Badges';
 
 const VERIFY_STYLE: Record<VerificationStatus['status'], string> = {
   VERIFIED: 'bg-emerald-100 text-emerald-900',
@@ -59,6 +60,7 @@ export function ProfileCard({ p, compact }: { p: ProfileView; compact?: boolean 
           </div>
         </div>
       </div>
+      {p.badges && p.badges.length > 0 && <BadgeShelf badges={p.badges} />}
       <section>
         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Self-reported (not checked)</h3>
         {s.intro && <p className="text-slate-700">{s.intro}</p>}

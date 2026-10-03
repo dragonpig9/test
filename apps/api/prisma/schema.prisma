@@ -92,6 +92,8 @@ model Member {
   /// from genuine verification and never read to grant access (demo off = genuine rules again).
   demoAdmittedAt      DateTime?
   demoAdmissionReason String?
+  /// Recognition badges are shown on the public profile unless the member hides them.
+  showBadges          Boolean   @default(true)
 
   invitationsSent      Invitation[]            @relation("InvitationInviter")
   invitationAccepted   Invitation?             @relation("InvitationAcceptedBy")
@@ -123,6 +125,7 @@ model Member {
   negativePeriods      NegativeBalancePeriod[]
   circleMemberships    CircleMembership[]
   circleMessages       CircleMessage[]
+  badges               MemberBadge[]
 }
 
 // ───────────────────────── invitations & vouches ─────────────────────────
@@ -900,6 +903,27 @@ model CircleMessage {
   createdAt DateTime
 
   @@index([roomId, createdAt])
+}
+
+// ───────────────────────── recognition badges ─────────────────────────
+
+/// Recognition only: badges never create credits, change prices or limits, raise credibility or
+/// relationship strength, unlock tasks or grant privileges. Unique per (member, kind, period), so a
+/// retried settlement or a repeated evaluation can never award the same badge twice.
+model MemberBadge {
+  id        String   @id @default(cuid())
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id])
+  /// FIRST_EXCHANGE | COMMUNITY_REGULAR
+  kind      String
+  /// "once" for one-time badges; "YYYY-MM" (Hong Kong calendar month) for monthly badges.
+  period    String
+  awardedAt DateTime
+  /// What earned it (exchange ids, days, counterparty count) for explanations.
+  evidence  Json
+
+  @@unique([memberId, kind, period])
+  @@index([memberId, awardedAt])
 }
 
 // ───────────────────────── audit & system ─────────────────────────

@@ -6,6 +6,7 @@ import { MemberChip } from '../../components/MemberChip';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { credits, fmtDate } from '../../lib/format';
+import { BadgeCelebration } from '../badges/Badges';
 import { CommunityPoolCard } from '../community-pool/CommunityPoolCard';
 import { DemoGuide } from '../demo/DemoGuide';
 import { FriendsActivityCard } from '../friends-activity/FriendsActivityCard';
@@ -40,6 +41,7 @@ export function OverviewPage() {
   return (
     <div>
       <PageHeader title={`Hello, ${me.member.displayName.split(' ')[0]}`} subtitle={`Current ${me.demoMode ? 'simulated ' : ''}time: ${fmtDate(me.now)}. Everything below is computed by the server from recorded exchanges, vouches and findings.`} />
+      <BadgeCelebration />
       {me.member.status === 'LEFT' && (
         <div className="mb-6 rounded-xl border border-slate-300 bg-slate-100 p-4 text-sm">You have left the community. You can still finish accepted exchanges, disputes and attestation duties; new commitments are blocked.</div>
       )}

@@ -84,6 +84,8 @@ export const createListingSchema = z.object({
   ...requirementFields,
 });
 
+export const badgeVisibilitySchema = z.object({ showBadges: z.boolean() });
+
 export const circleMessageSchema = z.object({
   body: z.string().trim().min(1, 'Write a message').max(1000),
   tags: z.array(z.enum(TOPIC_TAGS)).max(TOPIC_TAGS.length).default([]),

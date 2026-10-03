@@ -75,6 +75,27 @@ export interface ActivityWindowView {
   timezone: string;
 }
 
+export type BadgeKind = 'FIRST_EXCHANGE' | 'COMMUNITY_REGULAR';
+
+/** Recognition only: no credits, prices, limits, credibility, relationship strength or privileges. */
+export interface BadgeView {
+  kind: BadgeKind;
+  label: 'First Exchange' | 'Community Regular';
+  description: string;
+  /** "once" or "YYYY-MM" */
+  period: string;
+  /** e.g. "October 2026" for monthly badges; null for one-time badges. */
+  periodLabel: string | null;
+  awardedAt: string;
+}
+
+export interface MyBadgesView {
+  badges: BadgeView[];
+  showBadges: boolean;
+  definitions: { kind: BadgeKind; label: string; description: string }[];
+  note: string;
+}
+
 export interface FriendsActivityEntry {
   /** Equal points → equal rank (1, 1, 3). */
   rank: number;

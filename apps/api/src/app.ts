@@ -7,6 +7,7 @@ import { env } from './config/env';
 import { AppError } from './core/errors';
 import { logRequest } from './core/request-log';
 import { auditRouter } from './modules/audit/audit.routes';
+import { badgesRouter } from './modules/badges/badges.routes';
 import { circlesRouter } from './modules/circles/circles.routes';
 import { communityPoolRouter } from './modules/community-pool/community-pool.routes';
 import { dailyJobRouter } from './modules/daily-job/daily-job.routes';
@@ -95,6 +96,7 @@ export function createApp() {
   authed.use('/students', studentRouter);
   authed.use('/circles', circlesRouter);
   authed.use('/friends-activity', friendsActivityRouter);
+  authed.use('/badges', badgesRouter);
   authed.use('/community-pool', communityPoolRouter);
   authed.use('/daily-job', dailyJobRouter);
   if (env.debugEndpoints) authed.use('/debug', debugRouter);

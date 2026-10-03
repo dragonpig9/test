@@ -228,6 +228,16 @@ export const POLICY = {
     maxPointsPerPairPerMonth: 2,
   },
 
+  /**
+   * Recognition badges (no economic effect at all).
+   *   FIRST_EXCHANGE    — once, after the member's first qualifying settled exchange.
+   *   COMMUNITY_REGULAR — for a Hong Kong calendar month in which the member earned Friends-activity
+   *                       points on ≥ minDays different days with ≥ minCounterparties different people.
+   */
+  badges: {
+    communityRegular: { minDays: 3, minCounterparties: 2 },
+  },
+
   /** Community Credit Pool: receives expired credits; the daily job redistributes it. The pool never expires. */
   communityPool: {
     /** recipients = ceil(activeUsers × numerator / denominator) */
@@ -298,6 +308,7 @@ export const RULES = {
   STUDENT_VERIFY: 'STUDENT.EMAIL_VERIFICATION.v1',
   ACTIVITY_SCORE: 'ACTIVITY.DISTINCT_COUNTERPARTY_DAY.v1',
   FRIENDS_ACTIVITY: 'ACTIVITY.FRIENDS_MONTHLY_PAIR_CAPS.v1',
+  BADGE_AWARD: 'BADGES.RECOGNITION_ONLY.v1',
   EXPIRY_TO_POOL: 'LEDGER.CREDIT_EXPIRY_TO_POOL.v2',
   POOL_DISTRIBUTE: 'POOL.DAILY_REDISTRIBUTION.v1',
   NEGATIVE_BALANCE: 'CREDITS.NEGATIVE_BALANCE_PERIOD.v1',

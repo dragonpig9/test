@@ -1,4 +1,4 @@
-import type { AdmissionView } from './community';
+import type { AdmissionView, BadgeView } from './community';
 import type {
   AssignmentStatus,
   DisputeCondition,
@@ -529,6 +529,8 @@ export interface ProfileView {
   contact: { email: string | null; phone: string | null; visibility: string } | null;
   /** Only for the member themselves. */
   private: { loginEmail: string; homeAddress: string | null; shareContactWithPartners: boolean; juryAvailable: boolean } | null;
+  /** Recognition badges; null when the member chose to hide them (the member always sees their own). */
+  badges: BadgeView[] | null;
   privacyNote: string;
 }
 

@@ -3,6 +3,7 @@ import type { ProfileUpdateInput, ProfileView, VerificationStatus } from '@commo
 import { RULES } from '../../config/policy';
 import type { Ctx } from '../../core/context';
 import type { Db, Tx } from '../../core/db';
+import { profileBadges } from '../badges/badges.service';
 import { recordAudit } from '../audit/audit.service';
 import { computeCredibility } from '../credibility/credibility.service';
 import { getMember, toSummary } from '../members/member.repo';
@@ -77,6 +78,7 @@ export async function profileView(db: Db, memberId: string, viewerId: string, no
         ? { email: m.contactEmail ?? m.email, phone: m.phone, visibility: isMe ? (m.shareContactWithPartners ? 'You share this with members you have an active exchange with.' : 'Private: only you can see this.') : 'Shared with you because you have an active exchange together.' }
         : null,
     private: isMe ? { loginEmail: m.email, homeAddress: m.homeAddress, shareContactWithPartners: m.shareContactWithPartners, juryAvailable: m.juryAvailable } : null,
+    badges: await profileBadges(db, memberId, isMe, m.showBadges),
     privacyNote: PRIVACY_NOTE,
   };
 }
