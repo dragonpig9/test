@@ -22,6 +22,8 @@ import { syncCircleMembership } from '../circles/circles.membership';
 import { postCircleMessage } from '../circles/circles.service';
 import { isDemoMode } from '../../config/demo-mode';
 import { expireStaleVouches, proposeVouch, respondToVouch } from '../vouches/vouch.service';
+import { checkDemoFixtures } from './demo.fixtures';
+import { markDemoStatus, setPreparingHere } from './demo.readiness';
 
 /** The simulated "today" the demo starts at. */
 export const DEMO_NOW = new Date('2026-10-01T09:00:00.000Z');
@@ -51,18 +53,50 @@ const profileOf = (m: (typeof DEMO_MEMBERS)[number]) => ({
 
 type Handle = (typeof DEMO_MEMBERS)[number]['handle'];
 
-/** Truncates every table (used by reset and tests). */
-export async function truncateAll(prisma: PrismaClient) {
+const truncateStatement = async (prisma: PrismaClient) => {
   const tables = await prisma.$queryRaw<{ tablename: string }[]>`SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> '_prisma_migrations'`;
-  if (tables.length) await prisma.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`);
+  return tables.length ? `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(', ')} RESTART IDENTITY CASCADE` : null;
+};
+
+/** Truncates every table (used by tests). */
+export async function truncateAll(prisma: PrismaClient) {
+  const sql = await truncateStatement(prisma);
+  if (sql) await prisma.$executeRawUnsafe(sql);
 }
 
 /**
  * Builds the demo community by calling the REAL service functions with dated contexts,
  * so every balance, vouch and score is derived from records (nothing is hard-coded).
+ *
+ * Readiness (see demo.readiness): the community is INITIALIZING from before the truncation until the
+ * housekeeping and the fixture checks have finished, then READY with a new seed version; FAILED if
+ * anything throws or a fixture check fails. Readers and actions never get the half-built community.
  */
 export async function seedDemo(prisma: PrismaClient) {
-  await truncateAll(prisma);
+  setPreparingHere(true);
+  try {
+    await markDemoStatus(prisma, 'INITIALIZING', 'Rebuilding the demo community.');
+    // Truncation and the INITIALIZING row commit together, so no reader sees empty tables marked READY.
+    const sql = await truncateStatement(prisma);
+    await prisma.$transaction([
+      ...(sql ? [prisma.$executeRawUnsafe(sql)] : []),
+      prisma.systemState.create({ data: { id: 1, demoStatus: 'INITIALIZING', demoStatusDetail: 'Rebuilding the demo community.', demoStatusAt: new Date() } }),
+    ]);
+    const ids = await buildCommunity(prisma);
+    // Only a community whose edge-case examples are all in place is declared READY.
+    const problems = (await checkDemoFixtures(prisma, DEMO_NOW)).filter((c) => c.state !== 'ready');
+    if (problems.length) throw new Error(`Demo fixture check failed: ${problems.map((p) => p.detail).join(' ')}`);
+    await markDemoStatus(prisma, 'READY', null, new Date());
+    return ids;
+  } catch (e) {
+    await markDemoStatus(prisma, 'FAILED', e instanceof Error ? e.message.slice(0, 500) : 'Unknown error').catch(() => undefined);
+    throw e;
+  } finally {
+    setPreparingHere(false);
+  }
+}
+
+async function buildCommunity(prisma: PrismaClient) {
   const hash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const ids = {} as Record<Handle, string>;
   let n = 0;
@@ -325,11 +359,7 @@ export async function seedDemo(prisma: PrismaClient) {
   // Notifications generated while building the history are marked read, so the bell starts with
   // only the last few days' events.
   await prisma.notification.updateMany({ where: { createdAt: { lt: new Date('2026-09-25T00:00:00Z') } }, data: { readAt: DEMO_NOW } });
-  await prisma.systemState.upsert({
-    where: { id: 1 },
-    create: { id: 1, simulatedNow: DEMO_NOW, seededAt: new Date() },
-    update: { simulatedNow: DEMO_NOW, seededAt: new Date() },
-  });
+  await prisma.systemState.update({ where: { id: 1 }, data: { simulatedNow: DEMO_NOW, demoStatusDetail: 'Checking the demo examples.' } });
   // Today's daily job (00:00 Hong Kong) is treated as already done for the seeded history, so the
   // scripted demo is not changed behind the presenter's back. The first real run happens at the next
   // 00:00 (demo bar: +1d or "Next 00:00 HKT"), distributing the pool to that week's most active members.

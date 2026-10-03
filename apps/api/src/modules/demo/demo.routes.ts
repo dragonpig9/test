@@ -11,6 +11,7 @@ import { addDays } from '../../core/dates';
 import { nextRunAt } from '../community-pool/community-pool.service';
 import { runDailyJobsBetween, runDueDailyJob } from '../daily-job/daily-job.service';
 import { DEMO_EXTRAS, advanceClock, advanceClockTo, demoGuide, resetDemo, runSweeps } from './demo.service';
+import { demoReadiness, notReadyError } from './demo.readiness';
 import { demoWalkthrough } from './demo.walkthrough';
 
 export const demoRouter = Router();
@@ -47,9 +48,23 @@ demoRouter.get(
 demoRouter.get(
   '/walkthrough',
   ah(async (req, res) => {
-    const view = await demoWalkthrough(req.ctx.now);
+    // Never serve a community that a reset is still rebuilding: check before and after reading, so a reset
+    // that starts while the view is being built cannot leak a mix of old and new records.
+    const before = await demoReadiness(prisma);
+    if (before.status !== 'READY') throw notReadyError(before, M);
+    const view = await demoWalkthrough(req.ctx.now, before.seedVersion);
+    const after = await demoReadiness(prisma);
+    if (after.status !== 'READY' || after.seedVersion !== before.seedVersion) throw notReadyError(after.status === 'READY' ? { ...after, status: 'INITIALIZING' } : after, M);
     if (!view) throw new AppError('NOT_FOUND', 'The demo community has not been seeded on this server.', M);
     res.json(view);
+  }),
+);
+
+/** Cheap readiness poll for the walkthrough: INITIALIZING during a reset, READY with the completed seed version. */
+demoRouter.get(
+  '/readiness',
+  ah(async (_req, res) => {
+    res.json(await demoReadiness(prisma));
   }),
 );
 

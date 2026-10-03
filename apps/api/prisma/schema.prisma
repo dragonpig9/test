@@ -956,9 +956,21 @@ model AuditEvent {
 }
 
 /// Single-row table holding the demo clock.
+/// Readiness of the shared demo community (demo mode). A reset truncates and rebuilds it step by step,
+/// so it is INITIALIZING until seeding, housekeeping and the fixture checks have finished.
+enum DemoReadiness {
+  INITIALIZING
+  READY
+  FAILED
+}
+
 model SystemState {
-  id           Int       @id @default(1)
-  simulatedNow DateTime?
-  seededAt     DateTime?
-  updatedAt    DateTime  @updatedAt
+  id               Int           @id @default(1)
+  simulatedNow     DateTime?
+  seededAt         DateTime?
+  demoStatus       DemoReadiness @default(READY)
+  /// Why preparation failed, or what it is doing.
+  demoStatusDetail String?
+  demoStatusAt     DateTime?
+  updatedAt        DateTime      @updatedAt
 }

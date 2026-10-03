@@ -539,13 +539,107 @@ export interface DemoWalkthroughView {
     emailPreviews: EmailOutboxView[];
   };
   edgeCases: {
+    /** Whether each example is ready to demonstrate, already completed or changed by visitors, or missing. */
+    status: Record<DemoEdgeCaseKey, DemoFixtureCheck>;
     catExchangeId: string | null;
     floorExchangeId: string | null;
     benCredits: CreditSummary | null;
+    /** The floor check for Ben accepting Kofi's proposal, from the live balance (null if there is no proposal). */
+    floor: DemoFloorCheck | null;
     kettleDisputeId: string | null;
     tomasCredits: CreditSummary | null;
+    tomasExpiry: DemoExpiryView | null;
     meiSkillClaims: SkillClaimView[];
+    /** The approving reviews of Mei's Translation claim, with the reviewer checks that applied. */
+    skillReviews: DemoSkillReviewCheck[];
   };
+  /** Identifies the completed seed this view was read from; it changes when the demo is reset. */
+  seedVersion: string | null;
+}
+
+export type DemoEdgeCaseKey = 'home' | 'skills' | 'floor' | 'jury' | 'expiry';
+
+/**
+ * ready: the example is in its initial, demonstrable state. changed: visitors already completed or moved it on
+ * (its saved outcome is shown). missing: the records are not in the demo data.
+ */
+export interface DemoFixtureCheck {
+  key: DemoEdgeCaseKey;
+  state: 'ready' | 'changed' | 'missing';
+  detail: string;
+}
+
+/** INITIALIZING while a reset rebuilds the shared demo, READY after seeding and fixture checks, FAILED otherwise. */
+export interface DemoReadinessView {
+  status: 'INITIALIZING' | 'READY' | 'FAILED';
+  /** Changes whenever a seed completes; clients drop cached demo data when it changes. */
+  seedVersion: string | null;
+  detail: string | null;
+  since: string | null;
+}
+
+export interface DemoFloorCheck {
+  exchangeStatus: string;
+  /** What Ben would reserve on acceptance (price + gift). */
+  cost: number;
+  availableNow: number;
+  availableAfter: number;
+  floor: number;
+  /** True only when the arithmetic really breaches the floor. */
+  wouldBreach: boolean;
+  /** Reservations recorded for this exchange (a rejected acceptance creates none). */
+  reservations: number;
+}
+
+export interface DemoSkillReviewCheck {
+  reviewer: MemberSummary;
+  approve: boolean;
+  createdAt: string;
+  /** Reviewer credibility from their latest snapshot at or before the review. */
+  reviewerCredibilityAtReview: number | null;
+  requiredCredibility: number;
+  /** Whether a conflict of interest is declared between reviewer and claimant (reviews are refused when there is). */
+  conflictDeclared: boolean;
+}
+
+/**
+ * State of each credit lot, read from records:
+ * active, due (past its expiry date but not processed yet), protected (backing an open reservation),
+ * expired (consumed by a recorded expiry transaction), spent (used by an exchange), mixed, or used (fully
+ * consumed, but the ledger replay could not attribute it exactly).
+ */
+export interface DemoExpiryLot {
+  id: string;
+  earnedAt: string;
+  expiresAt: string;
+  originalAmount: number;
+  remaining: number;
+  state: 'active' | 'due' | 'protected' | 'expired' | 'spent' | 'mixed' | 'used';
+  /** Units consumed by recorded expiry transactions. */
+  expiredAmount: number;
+  spentAmount: number;
+  protectedAmount: number;
+  expiryTransactionIds: string[];
+}
+
+export interface DemoExpiryTransaction {
+  id: string;
+  effectiveAt: string;
+  /** The member's debit entry (negative) and the Community Credit Pool's credit entry (positive). */
+  memberDebit: number;
+  poolCredit: number;
+  explanation: string;
+}
+
+export interface DemoExpiryView {
+  lots: DemoExpiryLot[];
+  transactions: DemoExpiryTransaction[];
+  /** Earliest expiry date of a lot that still holds unprotected credits and has not expired yet. */
+  nextExpiryAt: string | null;
+  /** Units past their expiry date that the next expiry run would move to the pool. */
+  dueNow: number;
+  /** False when the lot attribution could not be rebuilt exactly from the ledger; lots then show only what the records prove. */
+  attributionExact: boolean;
 }
 
 export interface SkillTierView {

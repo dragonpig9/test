@@ -238,7 +238,7 @@ Shared state transitions use `API/core/state-machine.ts` (`assertTransition` →
 ## 28. Simple demo walkthrough (`/demo`)
 - **Frontend:** `WEB/features/demo/walkthrough/{DemoWalkthroughPage (shell, progress, participant, Back/Next),parts (ActAsButton, ExchangePanel, ClockControl, Details),Chapter1Trust,Chapter2Exchanges,Chapter3Pricing,Chapter4Dispute,Chapter5Results,EdgeCases,api}.tsx`; route `/demo` in `App.tsx` (outside the app shell); entry links on the login page, demo bar and Demo guide
 - **Reused:** `TermsForm`, `ExchangeActions` (`useExchangeAction`), `PriceBreakdown`, `EligibilityPanel`, `PathPanel`, `EdgeDetails`, `TrustGraph`, `OpenDisputeForm`, `VotePanel`/`NeedsReview`/`JurySelection`, `InviteForm`, `OutboxList`, `TrustUpdateCard`, `Timeline`
-- **Backend:** `API/modules/demo/{demo.walkthrough (read-only view),demo.service (storyRecords shared with demoGuide)}.ts`
-- **Endpoint:** `GET /api/demo/walkthrough` (demo mode only; no writes; never returns addresses, codes or evidence)
-- **Rules:** chapter ticks = Demo Guide steps from records; actions go through the ordinary API as the acting member; the clock moves only on an explicit button; no reset.
-- **Test:** `test/demo.walkthrough.test.ts`.
+- **Backend:** `API/modules/demo/{demo.walkthrough (read-only view),demo.service (storyRecords shared with demoGuide),demo.readiness (INITIALIZING/READY/FAILED, action gate, job gate),demo.fixtures (edge-case checks, expiry attribution from the ledger, safe repair)}.ts`
+- **Endpoints:** `GET /api/demo/walkthrough` (demo mode only; no writes; never returns addresses, codes or evidence; 503 while not READY), `GET /api/demo/readiness`
+- **Rules:** chapter ticks = Demo Guide steps from records; actions go through the ordinary API as the acting member; the clock moves only on an explicit button; no reset. Edge cases are labelled ready / changed (saved outcome) / missing; a floor rejection is only claimed when available − cost < floor; a lot is "expired → pool" only when a recorded expiry transaction consumed it.
+- **Tests:** `test/demo.walkthrough.test.ts`, `test/demo.readiness.test.ts`, `WEB/features/demo/walkthrough/DemoWalkthroughPage.test.tsx`.

@@ -4,6 +4,7 @@ import { env } from './config/env';
 import { makeCtx, readClock } from './core/context';
 import { prisma, withTx } from './core/db';
 import { startDailyJobScheduler } from './modules/daily-job/daily-job.scheduler';
+import { demoReadyForJobs } from './modules/demo/demo.readiness';
 import { sweepReminders } from './modules/notifications/notification.reminders';
 import { deliverOutbox, recoverStuckEmails } from './modules/notifications/notification.service';
 
@@ -23,6 +24,8 @@ const TICK_MS = 60_000;
 setInterval(() => {
   void (async () => {
     try {
+      // Demo mode: skip while a reset is rebuilding the community (reminders would read partial data).
+      if (!(await demoReadyForJobs(prisma))) return;
       const now = await readClock(prisma);
       await withTx((tx) => sweepReminders(tx, makeCtx(null, now, `tick-${Date.now()}`)));
       await recoverStuckEmails();
