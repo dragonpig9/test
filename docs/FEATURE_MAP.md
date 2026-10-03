@@ -178,11 +178,13 @@ Shared state transitions use `API/core/state-machine.ts` (`assertTransition` →
 - **Rules:** server re-validates domain (`UNIVERSITY_DOMAIN_MISMATCH`/`VALIDATION_FAILED`); code 30 min, 5 attempts, single use, bound to the address; changing university/email clears verification and kills outstanding codes; `dev-preview` only when `NODE_ENV≠production` and never shown as verified.
 - **Test:** `test/community.integration.test.ts`, `test/community.rules.test.ts`.
 
-## 20. Activity scoring & friends leaderboard
-- **Frontend:** `WEB/features/leaderboard/FriendsLeaderboard.tsx` (Overview)
-- **Backend:** `API/modules/activity/{activity.rules (THE scoring function),activity.repo (qualifying exchanges),activity.service,activity.routes}.ts`; friends from `API/modules/trust/trust.friends.ts`
-- **Endpoints:** `GET /api/activity/leaderboard`
-- **Rules:** SETTLED exchanges (amount > 0, no unresolved dispute) in the last `POLICY.activity.windowDays` HK days; 1 point per (counterparty, day); ≤ `maxPointsPerPairPerWindow` per pair; ranks 1,1,3.
+## 20. Activity scoring (pool) & Friends activity (monthly)
+- **Pool scoring (unchanged):** `API/modules/activity/{activity.rules,activity.repo,activity.service}.ts` — `activityScores` over the last `POLICY.activity.windowDays` HK days, used only by the Community Credit Pool.
+- **Friends activity frontend:** `WEB/features/friends-activity/FriendsActivityCard.tsx` (Overview)
+- **Friends activity backend:** `API/modules/friends-activity/{friends-activity.rules (pure scoring + credit sums),friends-activity.repo (service transfers),friends-activity.service (read-only view),friends-activity.routes}.ts`; friends from `API/modules/trust/trust.friends.ts`
+- **Endpoints:** `GET /api/friends-activity?year=&month=` (defaults to the current Hong Kong month)
+- **Rules:** `POLICY.friendsActivity`: 1 point per participant per SETTLED exchange with a positive transfer; ≤ 1 per member per unordered pair per HK day, ≤ 2 per pair per month, across roles. Credits from SETTLEMENT transactions (provider earned, recipient spent, gift excluded) minus ADJUSTMENT refunds tied to the exchange. Ranks 1,1,3.
+- **Test:** `test/friends-activity.test.ts`.
 
 ## 21. Community Credit Pool
 - **Frontend:** `WEB/features/community-pool/CommunityPoolCard.tsx` (Overview); pool rewards labelled on Time Credits
@@ -202,3 +204,33 @@ Shared state transitions use `API/core/state-machine.ts` (`assertTransition` →
 - **Models:** `DailyJobRun` (unique runDate; RUNNING/COMPLETED/FAILED; stale RUNNING re-claimed after 15 min)
 - **Endpoints:** `GET /api/daily-job/runs`; demo: `POST /api/demo/clock/advance` runs every crossed 00:00; dev-only `POST /api/demo/clock/next-daily-run`, `POST /api/demo/daily-job/run`
 - **Test:** `test/community.integration.test.ts` (retries, concurrency, demo controls).
+
+## 24. Demo mode & verification guards
+- **Config:** `API/config/demo-mode.ts` (`isDemoMode()`, the only reader of `env.demoMode`); exposed by `GET /api/health`
+- **Backend:** `API/modules/verification/{verification.guards (pure: admission, university access, contact requirement, demo badge),verification.service (recordDemoAdmission),verification.middleware (requireAdmission)}.ts`
+- **Frontend:** `WEB/features/verification/VerificationGate.tsx`, `DemoBadge` in `components/MemberChip.tsx`
+- **Models:** `Member.{joinRoute,demoAdmittedAt,demoAdmissionReason}`
+- **Rules:** only `email-code` counts as genuine; demo admission is never treated as verification once demo mode is off; every authenticated request re-checks admission (`VERIFICATION_REQUIRED`).
+- **Test:** `test/demo-mode.test.ts`.
+
+## 25. Onboarding (two ways to join)
+- **Frontend:** `WEB/features/auth/{JoinChooserPage,StudentJoinPage,JoinPage (InvitationJoinPage)}.tsx`; routes `/join`, `/join/invitation`, `/join/student`
+- **Backend:** `API/modules/onboarding/{onboarding.terms,onboarding.service (joinAsStudent, afterJoin)}.ts`; routes in `auth/auth.routes.ts`
+- **Endpoints:** `GET /api/auth/join/student/terms`, `POST /api/auth/join/student`, `POST /api/auth/join`
+- **Test:** `test/onboarding.test.ts`.
+
+## 26. University circles
+- **Frontend:** `WEB/features/circles/{CirclesPage,TagPicker,api}.tsx`; tags on the Service Board and new-listing form
+- **Backend:** `API/modules/circles/{circles.rules (pure plan),circles.repo,circles.membership (syncCircleMembership),circles.service (access, room, board, post),circles.routes}.ts`
+- **Models:** `CircleRoom`, `CircleMembership` (one open per member), `CircleMessage`, `Listing.tags`
+- **Endpoints:** `GET /api/circles/me`, `GET/POST /api/circles/:code/messages`, `GET /api/circles/:code/board`
+- **Rules:** access = `universityAccessOf` (genuine verification, or self-declared in demo mode) and status ACTIVE, checked live (`CIRCLE_ACCESS_DENIED`); membership changes are audited (`RULES.CIRCLE_MEMBERSHIP`).
+- **Test:** `test/circles.test.ts`.
+
+## 27. Badges
+- **Frontend:** `WEB/features/badges/{Badges (shelf, settings card, celebration),api}.tsx`
+- **Backend:** `API/modules/badges/{badges.rules,badges.service (evaluate, views, visibility),badges.hooks (after settlement),badges.routes}.ts`
+- **Models:** `MemberBadge` (unique member+kind+period), `Member.showBadges`
+- **Endpoints:** `GET /api/badges/me`, `PUT /api/badges/me/visibility`
+- **Rules:** `POLICY.badges`; evaluated after commit of a settlement; idempotent; no credit, credibility, trust or permission effect.
+- **Test:** `test/badges.test.ts`, `test/economy-preserved.test.ts`.

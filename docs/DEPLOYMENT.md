@@ -22,7 +22,7 @@ Environment variables (set by the blueprint):
 | --- | --- |
 | `DATABASE_URL` | from `commonhours-db` |
 | `JWT_SECRET` | generated (the server refuses to start in production without one) |
-| `DEMO_MODE` | `true`: public account switcher, simulated clock and **Reset demo** for everyone |
+| `DEMO_MODE` | `true`: public account switcher, simulated clock and **Reset demo** for everyone, and verification never blocks access (student email codes, contact verification and verification screens are skipped; members are labelled "Demo student"/"Demo member"). `false`: genuine verification is required again, including for accounts admitted during the demo |
 | `DEBUG_ENDPOINTS` | `false` (debug routes are also always off when `NODE_ENV=production`) |
 | `SERVE_WEB` | `true`: serve the built web app from the same service |
 
@@ -64,7 +64,7 @@ Functions in `apps/web/functions` deploy automatically.
 
 Any other cron (GitHub Actions, a VM's crontab) can run the same script with `DATABASE_URL` set. A missed midnight is caught up on the next run.
 
-**University email codes need real email.** With `NODE_ENV=production` the development preview is off, so student verification codes can only be sent when `EMAIL_PROVIDER` (Gmail or SMTP) is configured; otherwise the API answers "Email delivery is not configured". Also check that your sender is not blocked by the university mail systems.
+**University email codes need real email** (only when `DEMO_MODE=false`). With `NODE_ENV=production` the development preview is off, so student verification codes can only be sent when `EMAIL_PROVIDER` (Gmail or SMTP) is configured; otherwise the API answers "Email delivery is not configured". Also check that your sender is not blocked by the university mail systems.
 
 ## Notes and risks
 - **Demo mode is public.** Anyone with the link can switch accounts or reset the data. That's intended for judging, but don't use it for real members. Set `DEMO_MODE=false` for a real pilot.
