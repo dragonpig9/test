@@ -8,6 +8,8 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   NOT_FOUND: 404,
   DEMO_DISABLED: 404,
   RATE_LIMITED: 429,
+  DEMO_PREPARING: 503,
+  DEMO_FAILED: 503,
   INTERNAL_ERROR: 500,
 };
 

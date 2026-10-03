@@ -7,7 +7,14 @@
 import { readClock } from '../src/core/context';
 import { prisma } from '../src/core/db';
 import { runDueDailyJob } from '../src/modules/daily-job/daily-job.service';
+import { demoReadyForJobs } from '../src/modules/demo/demo.readiness';
 
+// Demo mode: a reset is rebuilding the community; the next run (or the in-process scheduler) catches up.
+if (!(await demoReadyForJobs(prisma))) {
+  console.log('Demo community is still being prepared: daily job skipped for now.');
+  await prisma.$disconnect();
+  process.exit(0);
+}
 const r = await runDueDailyJob(await readClock(prisma), 'cli');
 console.log(`Daily job ${r.run.runDate}: ${r.run.status}${r.ran ? '' : ' (already done or running elsewhere; nothing repeated)'}`, JSON.stringify(r.run.steps));
 await prisma.$disconnect();

@@ -20,6 +20,8 @@ import { conflictsRouter, disputesRouter } from './modules/attestation/attestati
 import { credibilityRouter } from './modules/credibility/credibility.routes';
 import { debugRouter } from './modules/debug/debug.routes';
 import { demoRouter } from './modules/demo/demo.routes';
+import { demoActionGate } from './modules/demo/demo.readiness';
+import { prisma } from './core/db';
 import { exchangesRouter } from './modules/exchanges/exchange.routes';
 import { expiryRouter } from './modules/expiry/expiry.routes';
 import { invitationsRouter, publicInvitationsRouter } from './modules/invitations/invitation.routes';
@@ -64,6 +66,9 @@ export function createApp() {
     });
     next();
   });
+
+  // Demo mode: actions wait until the shared demo community is fully prepared (see demo.readiness).
+  app.use(demoActionGate(prisma));
 
   // Public configuration the web app reads before sign-in. demoMode comes only from the server's DEMO_MODE.
   app.get('/api/health', (req, res) => res.json({ ok: true, now: req.ctx.now, demoMode: demoModeStatus().enabled, demo: demoModeStatus() }));

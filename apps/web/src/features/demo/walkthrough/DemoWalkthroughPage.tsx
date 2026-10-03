@@ -1,7 +1,8 @@
 import clsx from 'clsx';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { DemoWalkthroughView } from '@commonhours/shared';
+import type { DemoReadinessView, DemoWalkthroughView } from '@commonhours/shared';
 import { Avatar } from '../../../components/MemberChip';
 import { Button, ErrorBox, Loading } from '../../../components/ui';
 import { useAuth } from '../../../lib/auth';
@@ -9,7 +10,8 @@ import { fmtDate } from '../../../lib/format';
 import { useAction } from '../../../lib/mutations';
 import { usePublicConfig } from '../../auth/api';
 import { switchAccount } from '../api';
-import { CHAPTERS, useWalkthrough } from './api';
+import { CHAPTERS, MAX_PREPARING_POLLS, PREPARING_POLL_MS, READY_POLL_MS, isDemoNotReady, useDemoReadiness, useWalkthrough } from './api';
+import type { ApiError } from '../../../lib/api';
 import { Chapter1Trust } from './Chapter1Trust';
 import { Chapter2Exchanges } from './Chapter2Exchanges';
 import { Chapter3Pricing } from './Chapter3Pricing';
@@ -44,22 +46,65 @@ export function DemoWalkthroughPage() {
   if (cfg.data) demoFlag.current = cfg.data.demoMode;
   const demoOn = !!demoFlag.current;
 
+  // Readiness of the shared demo: while a reset rebuilds it, nothing partial is shown and nothing is acted on.
+  // Polling is bounded: after about two minutes of "preparing" the visitor gets a Retry button instead.
+  const qc = useQueryClient();
+  const [polls, setPolls] = useState(0);
+  const gaveUp = polls >= MAX_PREPARING_POLLS;
+  const rq = useDemoReadiness(demoOn, (status) => (gaveUp || status === 'FAILED' ? false : status === 'READY' ? READY_POLL_MS : PREPARING_POLL_MS));
+  const readiness = rq.data;
+  const isReady = readiness?.status === 'READY';
+
   // No registration, mailbox or invitation: start visitors as Mei through the existing demo switcher.
-  // Also covers a stale token after the demo data was re-seeded (at most twice, so a failure never loops).
+  // Also covers a stale token after the demo data was re-seeded (at most twice per seed, so a failure never loops).
   const start = useAction((h: string) => switchAccount(h), (r) => signIn(r.token));
   const attempts = useRef(0);
   useEffect(() => {
-    if (demoOn && !loading && !signedIn && !start.isPending && !start.isError && attempts.current < 2) {
+    if (demoOn && isReady && !loading && !signedIn && !start.isPending && !start.isError && attempts.current < 2) {
       attempts.current += 1;
       start.mutate('mei');
     }
-  }, [demoOn, loading, signedIn, start]);
+  }, [demoOn, isReady, loading, signedIn, start]);
 
-  const wq = useWalkthrough(demoOn);
-  // Keep showing the last state while queries refetch after a participant switch.
+  const wq = useWalkthrough(demoOn && isReady);
+  const wCode = (wq.error as ApiError | null)?.code;
+  const preparing = readiness?.status === 'INITIALIZING' || wCode === 'DEMO_PREPARING';
+  const failed = readiness?.status === 'FAILED' || wCode === 'DEMO_FAILED';
+  // Keep showing the last state while queries refetch after a participant switch, but never across a reset.
   const last = useRef<DemoWalkthroughView>();
-  if (wq.data) last.current = wq.data;
-  const w = wq.data ?? last.current;
+  if (preparing || failed) last.current = undefined;
+  else if (wq.data) last.current = wq.data;
+  const w = preparing || failed ? undefined : (wq.data ?? last.current);
+
+  // Each readiness answer: count "preparing" polls, re-check the view when the server says READY again, and
+  // drop every cached query when a different seed completed (old ids and the old snapshot are gone).
+  const version = useRef<string | null>(null);
+  useEffect(() => {
+    if (!readiness) return;
+    setPolls((p) => (readiness.status === 'INITIALIZING' ? p + 1 : 0));
+    if (readiness.status !== 'READY' || !readiness.seedVersion) return;
+    const changed = version.current !== null && version.current !== readiness.seedVersion;
+    version.current = readiness.seedVersion;
+    if (changed) {
+      last.current = undefined;
+      attempts.current = 0;
+      start.reset();
+      void qc.resetQueries({ predicate: (q) => !(q.queryKey[0] === 'demo' && q.queryKey[1] === 'readiness') });
+    } else {
+      if (isDemoNotReady(wq.error)) void wq.refetch();
+      if (isDemoNotReady(start.error)) start.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rq.dataUpdatedAt]);
+  // The view answered "preparing" before the readiness poll noticed: ask readiness now.
+  useEffect(() => {
+    if (wCode === 'DEMO_PREPARING' || wCode === 'DEMO_FAILED') void rq.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wq.errorUpdatedAt]);
+  const retryReadiness = () => {
+    setPolls(0);
+    void rq.refetch();
+  };
 
   // Block body: newer Chrome returns a Promise from scrollTo, which React would call as the cleanup.
   useEffect(() => {
@@ -88,7 +133,13 @@ export function DemoWalkthroughPage() {
         <span className="text-amber-900">This is one shared demo community: other visitors may already have moved the story on, and you will see their saved results. Opening or restarting the walkthrough never resets data.</span>
       </p>
       <Progress view={view} w={w} onGo={go} />
-      {start.error && !signedIn ? (
+      {failed ? (
+        <Failed readiness={readiness} error={wCode === 'DEMO_FAILED' ? wq.error : null} onRetry={retryReadiness} />
+      ) : preparing ? (
+        <Preparing gaveUp={gaveUp} onRetry={retryReadiness} />
+      ) : !readiness && rq.error ? (
+        <Retry error={rq.error} onRetry={retryReadiness} title="Could not check the demo" />
+      ) : start.error && !signedIn && !isDemoNotReady(start.error) ? (
         <Retry error={start.error} onRetry={() => start.mutate('mei')} title="Could not start the demo as Mei" />
       ) : !w ? (
         wq.error ? <Retry error={wq.error} onRetry={() => void wq.refetch()} title="Could not load the demo" /> : <Loading label="Loading the demo community…" />
@@ -273,6 +324,41 @@ function ChapterSteps({ w, n }: { w: DemoWalkthroughView; n: number }) {
       </ol>
       <p className="mt-2 text-[11px] text-slate-500">Ticks come from saved records, not from clicking Next.</p>
     </section>
+  );
+}
+
+/** Shown while a reset rebuilds the shared demo; the page refreshes by itself when it is ready. */
+function Preparing({ gaveUp, onRetry }: { gaveUp: boolean; onRetry: () => void }) {
+  return (
+    <div className="mx-auto mt-6 max-w-xl rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm" role="status" aria-live="polite">
+      {gaveUp ? (
+        <>
+          <p className="font-semibold">The demo examples are still being prepared</p>
+          <p className="mt-1 text-sm text-slate-600">This is taking longer than usual. Nothing has been changed by this page.</p>
+          <Button className="mt-3" variant="secondary" onClick={onRetry}>
+            Check again
+          </Button>
+        </>
+      ) : (
+        <>
+          <Loading label="Preparing demo examples…" />
+          <p className="mt-2 text-sm text-slate-600">Someone reset the shared demo community and it is being rebuilt. This page continues automatically when it is ready.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Failed({ readiness, error, onRetry }: { readiness?: DemoReadinessView; error: unknown; onRetry: () => void }) {
+  const e = error ?? { message: `Preparing the demo examples failed${readiness?.detail ? `: ${readiness.detail}` : '.'}` };
+  return (
+    <div className="mx-auto mt-6 max-w-xl space-y-2">
+      <ErrorBox error={e} title="The demo examples could not be prepared" />
+      <p className="text-sm text-slate-600">Resetting the demo from the full app prepares it again. This page never resets the shared demo on its own.</p>
+      <Button variant="secondary" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
   );
 }
 

@@ -15,6 +15,7 @@ import { trustUpdateForExchange } from '../trust/trust.earned';
 import { findPath, loadTrust } from '../trust/trust.service';
 import { backedStrength, liabilityMultiplier } from '../vouches/vouch.rules';
 import { toEdgeView } from '../vouches/vouch.view';
+import { checkDemoFixtures, expiryView, floorExample, skillReviewChecks } from './demo.fixtures';
 import { demoGuide, storyRecords } from './demo.service';
 
 /** The 15 Demo Guide steps grouped into the walkthrough's five chapters (step numbers, inclusive). */
@@ -34,7 +35,7 @@ const OBSERVER = '';
  * nothing is computed that the full app does not already compute, and nothing is written.
  * Private data stays private: no home address, no verification codes, no evidence text.
  */
-export async function demoWalkthrough(now: Date): Promise<DemoWalkthroughView | null> {
+export async function demoWalkthrough(now: Date, seedVersion: string | null = null): Promise<DemoWalkthroughView | null> {
   const story = await storyRecords();
   if (!story) return null;
   const { members, by, mei, sam, cooking, tutoring, third } = story;
@@ -134,8 +135,7 @@ export async function demoWalkthrough(now: Date): Promise<DemoWalkthroughView | 
         orderBy: { createdAt: 'desc' },
       })
     : null;
-  const floorExchange =
-    ben && kofi ? await prisma.exchange.findFirst({ where: { providerId: kofi.id, recipientId: ben.id, category: 'Equipment repair' }, orderBy: { createdAt: 'desc' } }) : null;
+  const floor = await floorExample(prisma);
   const kettle =
     kofi && lena ? await prisma.dispute.findFirst({ where: { exchange: { providerId: kofi.id, recipientId: lena.id } }, orderBy: { createdAt: 'asc' } }) : null;
 
@@ -186,12 +186,17 @@ export async function demoWalkthrough(now: Date): Promise<DemoWalkthroughView | 
       emailPreviews: previews.map(toOutboxView),
     },
     edgeCases: {
+      status: Object.fromEntries((await checkDemoFixtures(prisma, now)).map((c) => [c.key, c])) as DemoWalkthroughView['edgeCases']['status'],
       catExchangeId: catExchange?.id ?? null,
-      floorExchangeId: floorExchange?.id ?? null,
+      floorExchangeId: floor.exchange?.id ?? null,
       benCredits: ben ? await creditSummary(prisma, ben.id, now) : null,
+      floor: floor.check,
       kettleDisputeId: kettle?.id ?? null,
       tomasCredits: tomas ? await creditSummary(prisma, tomas.id, now) : null,
+      tomasExpiry: tomas ? await expiryView(prisma, tomas.id, now) : null,
       meiSkillClaims: await listSkillClaims(prisma, mei.id, now, { memberId: mei.id }),
+      skillReviews: await skillReviewChecks(prisma),
     },
+    seedVersion,
   };
 }

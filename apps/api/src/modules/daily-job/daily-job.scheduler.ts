@@ -1,5 +1,6 @@
 import { readClock } from '../../core/context';
 import { prisma } from '../../core/db';
+import { demoReadyForJobs } from '../demo/demo.readiness';
 import { runDueDailyJob } from './daily-job.service';
 
 /**
@@ -18,6 +19,8 @@ async function check() {
   if (running) return;
   running = true;
   try {
+    // Demo mode: never process a community that a reset is still rebuilding; the next check catches up.
+    if (!(await demoReadyForJobs(prisma))) return;
     const now = await readClock(prisma);
     const r = await runDueDailyJob(now, 'scheduler');
     if (r.ran) console.log(`[daily-job] ${r.run.runDate}: ${r.run.status}`);

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DemoWalkthroughView } from '@commonhours/shared';
+import type { DemoReadinessView, DemoWalkthroughView } from '@commonhours/shared';
 import { DemoWalkthroughPage } from './DemoWalkthroughPage';
 
 // Only the page shell is under test: data hooks and chapter bodies are stubbed.
@@ -16,8 +17,14 @@ const w = {
 
 vi.mock('../../auth/api', () => ({ usePublicConfig: () => ({ data: { demoMode: true }, isLoading: false }) }));
 vi.mock('../../../lib/auth', () => ({ useAuth: () => ({ signedIn: true, loading: false, signIn: vi.fn(), me: { member: mei } }) }));
-vi.mock('../../../lib/mutations', () => ({ useAction: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }) }));
-vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), useWalkthrough: () => ({ data: w, error: null, refetch: vi.fn() }) }));
+vi.mock('../../../lib/mutations', () => ({ useAction: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }) }));
+// What the server currently answers; tests change it and re-render.
+const server: { readiness: DemoReadinessView; updatedAt: number } = { readiness: { status: 'READY', seedVersion: 'v1', detail: null, since: null }, updatedAt: 1 };
+vi.mock('./api', async (orig) => ({
+  ...(await orig<typeof import('./api')>()),
+  useDemoReadiness: () => ({ data: server.readiness, dataUpdatedAt: server.updatedAt, error: null, refetch: vi.fn() }),
+  useWalkthrough: (enabled: boolean) => ({ data: enabled ? { ...w, seedVersion: server.readiness.seedVersion } : undefined, error: null, errorUpdatedAt: 0, refetch: vi.fn() }),
+}));
 vi.mock('./parts', () => ({
   useActAs: () => ({ me: mei, switchTo: vi.fn(), pending: null, error: null }),
   ActAsButton: () => null,
@@ -44,6 +51,7 @@ let errors: unknown[];
 const onError = (e: ErrorEvent) => errors.push(e.error);
 
 beforeEach(() => {
+  server.readiness = { status: 'READY', seedVersion: 'v1', detail: null, since: null };
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   errors = [];
   window.addEventListener('error', onError);
@@ -64,16 +72,24 @@ const body = () => host.querySelector('[data-testid="chapter-body"]')?.textConte
 const button = (name: RegExp) => [...host.querySelectorAll('button')].find((b) => name.test(b.textContent ?? ''))!;
 const click = (name: RegExp) => act(() => button(name).click());
 
+let qc: QueryClient;
+const tree = (path: string) => (
+  <QueryClientProvider client={qc}>
+    <MemoryRouter initialEntries={[path]}>
+      <Probe />
+      <DemoWalkthroughPage />
+    </MemoryRouter>
+  </QueryClientProvider>
+);
 async function mount(path: string) {
+  qc = new QueryClient();
   root = createRoot(host);
-  await act(() =>
-    root.render(
-      <MemoryRouter initialEntries={[path]}>
-        <Probe />
-        <DemoWalkthroughPage />
-      </MemoryRouter>,
-    ),
-  );
+  await act(() => root.render(tree(path)));
+}
+async function serverSays(r: Partial<DemoReadinessView>, path = '/demo?chapter=edge') {
+  server.readiness = { ...server.readiness, ...r };
+  server.updatedAt += 1;
+  await act(() => root.render(tree(path)));
 }
 
 describe('Simple demo navigation', () => {
@@ -119,5 +135,34 @@ describe('Simple demo navigation', () => {
     expect(body()).toBe('Chapter4Dispute');
     await act(() => root.unmount());
     expect(errors).toEqual([]);
+  });
+});
+
+describe('Simple demo readiness', () => {
+  it('shows "Preparing demo examples…" instead of partial data, then refreshes when ready', async () => {
+    await mount('/demo?chapter=edge');
+    expect(body()).toBe('EdgeCases');
+    const reset = vi.spyOn(qc, 'resetQueries');
+
+    await serverSays({ status: 'INITIALIZING', seedVersion: null });
+    expect(host.textContent).toContain('Preparing demo examples…');
+    expect(body()).toBeUndefined();
+
+    // A different seed completed: cached data from the old community is dropped, then the page shows again.
+    await serverSays({ status: 'READY', seedVersion: 'v2' });
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(body()).toBe('EdgeCases');
+    await act(() => root.unmount());
+    expect(errors).toEqual([]);
+  });
+
+  it('explains a failed preparation with a retry, and never shows the examples', async () => {
+    await mount('/demo?chapter=edge');
+    await serverSays({ status: 'FAILED', seedVersion: null, detail: 'Demo fixture check failed: kettle missing.' });
+    expect(host.textContent).toContain('The demo examples could not be prepared');
+    expect(host.textContent).toContain('kettle missing');
+    expect(button(/Try again/)).toBeTruthy();
+    expect(body()).toBeUndefined();
+    await act(() => root.unmount());
   });
 });
