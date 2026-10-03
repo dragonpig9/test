@@ -110,7 +110,7 @@ describe('student registration and university email verification', () => {
   });
 
   it('“Register as a student” at join: university email becomes the login email and must match', async () => {
-    const inv = await prisma.invitation.create({ data: { code: 'STUDENT1', inviterId: ids.alice, inviteeName: 'Ka Yan', strength: 0.7, liabilityPct: 25, termsVersion: 'test', createdAt: T0, expiresAt: addDays(T0, 14) } });
+    const inv = await prisma.invitation.create({ data: { code: 'STUDENT1', inviterId: ids.alice, inviteeName: 'Ka Yan', strength: 0.7, liabilityPct: 20, termsVersion: 'test', createdAt: T0, expiresAt: addDays(T0, 14) } });
     const base = { code: inv.code, displayName: 'Ka Yan', handle: 'kayan', password: 'long-enough-pw', acceptCommunityTerms: true, acceptVouchTerms: true };
     const bad = await request(app).post('/api/auth/join').send({ ...base, email: 'kayan@ln.hk', student: { university: 'HKBU', studentEmail: 'kayan@ln.hk', currentStudentDeclaration: true } });
     expect(bad.status).toBe(400);
@@ -126,7 +126,7 @@ describe('student registration and university email verification', () => {
     // Normal mode: the university email code is sent right after joining.
     env.demoMode = false;
     try {
-      const inv2 = await prisma.invitation.create({ data: { code: 'STUDENT2', inviterId: ids.alice, inviteeName: 'Wing', strength: 0.7, liabilityPct: 25, termsVersion: 'test', createdAt: T0, expiresAt: addDays(T0, 14) } });
+      const inv2 = await prisma.invitation.create({ data: { code: 'STUDENT2', inviterId: ids.alice, inviteeName: 'Wing', strength: 0.7, liabilityPct: 20, termsVersion: 'test', createdAt: T0, expiresAt: addDays(T0, 14) } });
       const r2 = await request(app).post('/api/auth/join').send({ ...base, code: inv2.code, handle: 'wing', email: 'wing@life.hkbu.edu.hk', student: { university: 'HKBU', studentEmail: 'wing@life.hkbu.edu.hk', currentStudentDeclaration: true } });
       expect(r2.status).toBe(201);
       expect(r2.body.studentVerification).toMatchObject({ sentTo: 'wing@life.hkbu.edu.hk' });

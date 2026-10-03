@@ -84,7 +84,7 @@ describe('two ways to join', () => {
     const bad = await request(app).post('/api/auth/join').send(body);
     expect(bad.status).toBe(422);
     expect(bad.body.error.code).toBe('INVITATION_INVALID');
-    await prisma.invitation.create({ data: { code: 'GOOD-0001', inviterId: (await prisma.member.findUniqueOrThrow({ where: { handle: 'alice' } })).id, inviteeName: 'Zed', strength: 0.7, liabilityPct: 25, termsVersion: 't', createdAt: T0, expiresAt: new Date(T0.getTime() + 864e5) } });
+    await prisma.invitation.create({ data: { code: 'GOOD-0001', inviterId: (await prisma.member.findUniqueOrThrow({ where: { handle: 'alice' } })).id, inviteeName: 'Zed', strength: 0.7, liabilityPct: 20, termsVersion: 't', createdAt: T0, expiresAt: new Date(T0.getTime() + 864e5) } });
     const ok = await request(app).post('/api/auth/join').send({ ...body, code: 'GOOD-0001' });
     expect(ok.status).toBe(201);
     expect(await prisma.vouch.count({ where: { voucheeId: ok.body.member.id, status: 'ACTIVE' } })).toBe(1);

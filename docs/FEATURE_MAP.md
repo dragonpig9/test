@@ -35,7 +35,7 @@ Shared state transitions use `API/core/state-machine.ts` (`assertTransition` →
 - **Backend:** `API/modules/vouches/{vouch.rules,vouch.service,vouch.view,vouch.routes}.ts`
 - **Models:** `Vouch`, `VouchAmendment`
 - **Endpoints:** `GET/POST /api/vouches`, `GET /api/vouches/terms`, `POST /api/vouches/:id/{accept|decline|revoke|amendments}`, `POST /api/vouches/amendments/:id/{accept|decline}`
-- **Rules:** strengths 0.4/0.7/1.0; liability 10/25/50% → penalty = pct × 20 points; decay ×0.5 after 12 months idle; expiry after 18 months idle; a settled exchange between the pair refreshes the timers only; strengthening goes one level up, needs ≥1 settled exchange and counterparty consent.
+- **Rules:** strengths 0.4/0.7/1.0; liability 10/20/30% → penalty = pct × 20 points and strength multiplier ×1.0/×1.2/×1.4 (backed = min(1, strength × multiplier)); decay ×0.5 of the backed strength after 12 months idle; expiry after 18 months idle; a settled exchange between the pair refreshes the timers only; strengthening goes one level up, needs ≥1 settled exchange and counterparty consent.
 - **Test:** `test/vouching.integration.test.ts`, `test/rules.unit.test.ts` (decay/expiry).
 - **Depends on:** credibility (thresholds), audit.
 

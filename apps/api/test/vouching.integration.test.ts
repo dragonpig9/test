@@ -39,14 +39,14 @@ describe('vouching', () => {
 
   it('strengthening needs a settled exchange and the counterparty’s fresh consent', async () => {
     const v = await prisma.vouch.findFirstOrThrow({ where: { voucherId: ids.alice, voucheeId: ids.mei } });
-    await expect(run(ids.mei, T0, (tx, ctx) => proposeAmendment(tx, ctx, v.id, ids.mei, { strength: 1.0, liabilityPct: 25 }))).rejects.toMatchObject({ code: 'STRENGTHEN_NOT_ALLOWED' });
+    await expect(run(ids.mei, T0, (tx, ctx) => proposeAmendment(tx, ctx, v.id, ids.mei, { strength: 1.0, liabilityPct: 20 }))).rejects.toMatchObject({ code: 'STRENGTHEN_NOT_ALLOWED' });
     const ex = await agreed(ids.mei, ids.alice, 60, addDays(T0, 1));
     await settleBoth(ex.id, ids.mei, ids.alice, addDays(T0, 2));
     expect((await prisma.vouch.findUniqueOrThrow({ where: { id: v.id } })).strength).toBe(0.7); // no silent strengthening
-    const a = await run(ids.mei, addDays(T0, 3), (tx, ctx) => proposeAmendment(tx, ctx, v.id, ids.mei, { strength: 1.0, liabilityPct: 50 }));
+    const a = await run(ids.mei, addDays(T0, 3), (tx, ctx) => proposeAmendment(tx, ctx, v.id, ids.mei, { strength: 1.0, liabilityPct: 30 }));
     await expect(run(ids.mei, addDays(T0, 3), (tx, ctx) => respondToAmendment(tx, ctx, a.id, ids.mei, true))).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await run(ids.alice, addDays(T0, 3), (tx, ctx) => respondToAmendment(tx, ctx, a.id, ids.alice, true));
-    expect(await prisma.vouch.findUniqueOrThrow({ where: { id: v.id } })).toMatchObject({ strength: 1.0, liabilityPct: 50 });
+    expect(await prisma.vouch.findUniqueOrThrow({ where: { id: v.id } })).toMatchObject({ strength: 1.0, liabilityPct: 30 });
   });
 
   it('expired edges stop establishing reachability', async () => {

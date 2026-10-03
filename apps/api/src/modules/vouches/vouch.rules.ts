@@ -8,7 +8,9 @@ import { addMonths, daysBetween } from '../../core/dates';
  *
  *  - An edge only counts for reachability while ACTIVE and before `expiresAt`.
  *  - `expiresAt` = last qualifying interaction + 18 months (POLICY.vouches.expireAfterMonths).
- *  - DECAY: after 12 months without a qualifying interaction the effective strength is
+ *  - BACKING: the voucher's liability raises how much the vouch counts:
+ *    backedStrength = min(1, strength × liability multiplier) (POLICY.vouches.liabilityStrengthMultipliers).
+ *  - DECAY: after 12 months without a qualifying interaction the backed strength is
  *    multiplied by 0.5 (POLICY.vouches.decayFactor). Stored strength is unchanged.
  *  - A qualifying interaction = an exchange between the two members that SETTLES.
  *    It refreshes the timers only; it never creates a new edge or raises strength.
@@ -16,23 +18,47 @@ import { addMonths, daysBetween } from '../../core/dates';
  */
 export interface EffectiveEdge {
   status: VouchStatus;
+  /** min(1, strength × liability multiplier), before any decay. */
+  backedStrength: number;
   effectiveStrength: number;
   decayed: boolean;
   idleSince: Date | null;
   explanation: string;
 }
 
-export type EdgeLike = Pick<Vouch, 'status' | 'strength' | 'activatedAt' | 'lastInteractionAt' | 'expiresAt' | 'endReason'>;
+export type EdgeLike = Pick<Vouch, 'status' | 'strength' | 'liabilityPct' | 'activatedAt' | 'lastInteractionAt' | 'expiresAt' | 'endReason'>;
 
 export function idleSince(v: EdgeLike): Date | null {
   return v.lastInteractionAt ?? v.activatedAt ?? null;
 }
 
+/** Strength multiplier for a liability %. Unlisted values use the highest listed % not above them. */
+export function liabilityMultiplier(liabilityPct: number): number {
+  const table = POLICY.vouches.liabilityStrengthMultipliers;
+  const pct = Object.keys(table)
+    .map(Number)
+    .filter((p) => p <= liabilityPct)
+    .sort((a, b) => b - a)[0];
+  return pct === undefined ? 1 : table[pct];
+}
+
+export function backedStrength(strength: number, liabilityPct: number): number {
+  return round2(Math.min(1, strength * liabilityMultiplier(liabilityPct)));
+}
+
+function backingText(v: EdgeLike, backed: number): string {
+  const m = liabilityMultiplier(v.liabilityPct);
+  if (m === 1) return `${v.strength}`;
+  return `min(1, ${v.strength} × ${m} for ${v.liabilityPct}% liability) = ${backed}`;
+}
+
 export function effectiveEdge(v: EdgeLike, now: Date): EffectiveEdge {
   const since = idleSince(v);
+  const backed = backedStrength(v.strength, v.liabilityPct);
   if (v.status !== 'ACTIVE') {
     return {
       status: v.status,
+      backedStrength: backed,
       effectiveStrength: 0,
       decayed: false,
       idleSince: since,
@@ -42,6 +68,7 @@ export function effectiveEdge(v: EdgeLike, now: Date): EffectiveEdge {
   if (v.expiresAt && v.expiresAt.getTime() <= now.getTime()) {
     return {
       status: 'EXPIRED',
+      backedStrength: backed,
       effectiveStrength: 0,
       decayed: false,
       idleSince: since,
@@ -49,21 +76,23 @@ export function effectiveEdge(v: EdgeLike, now: Date): EffectiveEdge {
     };
   }
   if (since && addMonths(since, POLICY.vouches.decayAfterMonths).getTime() <= now.getTime()) {
-    const eff = round2(v.strength * POLICY.vouches.decayFactor);
+    const eff = round2(backed * POLICY.vouches.decayFactor);
     return {
       status: 'ACTIVE',
+      backedStrength: backed,
       effectiveStrength: eff,
       decayed: true,
       idleSince: since,
-      explanation: `Decayed: no qualifying interaction since ${since.toISOString().slice(0, 10)} (${daysBetween(since, now)} days). ${v.strength} × ${POLICY.vouches.decayFactor} = ${eff}.`,
+      explanation: `Decayed: no qualifying interaction since ${since.toISOString().slice(0, 10)} (${daysBetween(since, now)} days). ${backed} × ${POLICY.vouches.decayFactor} = ${eff} (backed strength ${backingText(v, backed)}).`,
     };
   }
   return {
     status: 'ACTIVE',
-    effectiveStrength: v.strength,
+    backedStrength: backed,
+    effectiveStrength: backed,
     decayed: false,
     idleSince: since,
-    explanation: `Active at full strength ${v.strength}; last qualifying interaction ${since ? since.toISOString().slice(0, 10) : 'n/a'}.`,
+    explanation: `Active at full strength ${backingText(v, backed)}; last qualifying interaction ${since ? since.toISOString().slice(0, 10) : 'n/a'}.`,
   };
 }
 

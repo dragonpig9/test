@@ -13,7 +13,7 @@ const strengthSchema = z.number().refine((v) => (VOUCH_STRENGTHS as readonly num
   message: 'Strength must be 0.4, 0.7 or 1.0',
 });
 const liabilitySchema = z.number().int().refine((v) => (LIABILITY_OPTIONS as readonly number[]).includes(v), {
-  message: 'Liability must be 10, 25 or 50 percent',
+  message: 'Liability must be 10, 20 or 30 percent',
 });
 
 export const joinSchema = z.object({

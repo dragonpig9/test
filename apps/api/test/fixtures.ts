@@ -35,7 +35,7 @@ export async function community(handles: string[], edges?: [string, string, numb
     // Fixture shortcut: insert the invitation row directly (skips the inviter's credibility threshold
     // so larger test communities can be built). Joining still goes through the real consent path.
     const inv = await prisma.invitation.create({
-      data: { code: `T-${h}`.toUpperCase(), inviterId: ids[inviter], inviteeName: cap(h), strength, liabilityPct: 25, termsVersion: 'test', createdAt: when, expiresAt: addDays(when, 14) },
+      data: { code: `T-${h}`.toUpperCase(), inviterId: ids[inviter], inviteeName: cap(h), strength, liabilityPct: 10, termsVersion: 'test', createdAt: when, expiresAt: addDays(when, 14) },
     });
     const m = await run(null, when, (tx, ctx) =>
       joinWithInvitation(tx, ctx, { code: inv.code, displayName: cap(h), handle: h, email: `${h}@t.test`, password: 'test-password', acceptCommunityTerms: true, acceptVouchTerms: true }, { passwordHash: hash }),

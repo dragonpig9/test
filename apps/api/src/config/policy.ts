@@ -6,7 +6,7 @@
  * Units: credits are hundredths (100 = 1 credit = 1 hour of standard service).
  */
 export const POLICY = {
-  version: 'policy-2026.10-v3',
+  version: 'policy-2026.10-v4',
 
   credits: {
     /** Members may not commit to obligations that would push available balance below this. */
@@ -21,7 +21,15 @@ export const POLICY = {
 
   vouches: {
     allowedStrengths: [0.4, 0.7, 1.0],
-    liabilityOptions: [10, 25, 50],
+    liabilityOptions: [10, 20, 30],
+    /**
+     * Liability backing: the more liability a voucher accepts, the more their vouch counts.
+     *   backedStrength    = min(1, baseStrength × liabilityMultiplier)
+     *   effectiveStrength = backedStrength × decayFactor (only once the edge has decayed)
+     * A stored liability % not listed here (e.g. 25 or 50 from before this mapping) uses the
+     * multiplier of the highest listed % that does not exceed it.
+     */
+    liabilityStrengthMultipliers: { 10: 1.0, 20: 1.2, 30: 1.4 } as Record<number, number>,
     /**
      * Liability = bounded credibility penalty applied to the direct voucher after a
      * FINAL finding of nonperformance against the vouchee. penalty = pct% × maxLiabilityPoints.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { floorCheck, newLotAmount, planLotConsumption } from '../src/modules/ledger/ledger.rules';
 import { expirableAmount } from '../src/modules/expiry/expiry.rules';
 import { buildGraph, shortestPathsFrom } from '../src/modules/trust/trust.graph';
-import { effectiveEdge } from '../src/modules/vouches/vouch.rules';
+import { effectiveEdge, liabilityMultiplier } from '../src/modules/vouches/vouch.rules';
 import { computeScore } from '../src/modules/credibility/credibility.rules';
 import { evaluateEligibility, selectAttestors } from '../src/modules/attestation/attestation.eligibility';
 
@@ -90,15 +90,28 @@ describe('trust graph', () => {
     expect(shortestPathsFrom(g, 'mei').get('sam')!.hops).toBe(1);
   });
   it('treats expired and revoked edges as absent', () => {
-    const base = { strength: 0.7, activatedAt: d('2025-01-01'), lastInteractionAt: d('2025-01-01'), endReason: null };
+    const base = { strength: 0.7, liabilityPct: 10, activatedAt: d('2025-01-01'), lastInteractionAt: d('2025-01-01'), endReason: null };
     expect(effectiveEdge({ ...base, status: 'ACTIVE', expiresAt: d('2026-07-01') }, d('2026-08-01')).status).toBe('EXPIRED');
     expect(effectiveEdge({ ...base, status: 'REVOKED', expiresAt: d('2027-07-01') }, d('2026-02-01')).effectiveStrength).toBe(0);
     const g = buildGraph(members, [{ id: 'x', a: 'mei', b: 'sam', w: 0 }]);
     expect(shortestPathsFrom(g, 'mei').get('sam')).toBeUndefined();
   });
   it('decays after 12 months without interaction', () => {
-    const e = effectiveEdge({ status: 'ACTIVE', strength: 0.4, activatedAt: d('2025-01-01'), lastInteractionAt: d('2025-01-01'), expiresAt: d('2026-07-01'), endReason: null }, d('2026-02-01'));
+    const e = effectiveEdge({ status: 'ACTIVE', strength: 0.4, liabilityPct: 10, activatedAt: d('2025-01-01'), lastInteractionAt: d('2025-01-01'), expiresAt: d('2026-07-01'), endReason: null }, d('2026-02-01'));
     expect(e).toMatchObject({ status: 'ACTIVE', decayed: true, effectiveStrength: 0.2 });
+  });
+  it('backs strength with liability: backed = min(1, strength × multiplier), then decay', () => {
+    const edge = (strength: number, liabilityPct: number, now: Date) =>
+      effectiveEdge({ status: 'ACTIVE', strength, liabilityPct, activatedAt: d('2025-01-01'), lastInteractionAt: d('2025-01-01'), expiresAt: d('2026-07-01'), endReason: null }, now);
+    expect([10, 20, 30].map(liabilityMultiplier)).toEqual([1.0, 1.2, 1.4]);
+    expect(edge(0.7, 10, d('2025-06-01')).effectiveStrength).toBe(0.7);
+    expect(edge(0.7, 20, d('2025-06-01')).effectiveStrength).toBe(0.84);
+    expect(edge(0.4, 30, d('2025-06-01')).effectiveStrength).toBe(0.56);
+    expect(edge(0.7, 30, d('2025-06-01'))).toMatchObject({ backedStrength: 0.98, effectiveStrength: 0.98 });
+    expect(edge(1.0, 30, d('2025-06-01')).effectiveStrength).toBe(1);
+    expect(edge(0.7, 30, d('2026-02-01'))).toMatchObject({ decayed: true, backedStrength: 0.98, effectiveStrength: 0.49 });
+    // Liability stored before the 10/20/30 mapping falls back to the nearest lower tier.
+    expect([25, 50, 5].map(liabilityMultiplier)).toEqual([1.2, 1.4, 1]);
   });
 });
 
