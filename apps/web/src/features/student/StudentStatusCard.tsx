@@ -4,6 +4,7 @@ import { emailSuffixFor, type StudentStatusView, type UniversityCode } from '@co
 import { Button, Card, ErrorBox, Field, Loading, Success } from '../../components/ui';
 import { fmtDate } from '../../lib/format';
 import { useAction } from '../../lib/mutations';
+import { useAuth } from '../../lib/auth';
 import { useOutbox } from '../profiles/api';
 import { confirmStudentCode, requestStudentCode, saveStudentDetails, useStudentStatus } from './api';
 import { StudentDetailsFields, studentInput, useStudentDraft } from './StudentDetailsFields';
@@ -27,6 +28,10 @@ export function StudentStatusCard() {
 }
 
 function StudentStatusBody({ s }: { s: StudentStatusView }) {
+  const { me } = useAuth();
+  // Demo mode (server flag): no verification prompts. The verification flow itself is kept for normal mode.
+  const prompts = me?.admission.showVerificationPrompts ?? true;
+  const demoBadge = me?.admission.demoMode ? me.admission.demoBadge : null;
   const [editing, setEditing] = useState(!s.university);
   const [code, setCode] = useState('');
   const [sent, setSent] = useState<{ sentTo: string; delivery: string } | null>(null);
@@ -45,8 +50,8 @@ function StudentStatusBody({ s }: { s: StudentStatusView }) {
   const confirm = useAction(() => confirmStudentCode(code), () => setCode(''));
   const outbox = useOutbox();
   const preview = outbox.data?.emails.find((e) => e.subject.includes('university email') && e.status === 'PREVIEW');
-  const [label, style] = PILL[s.emailVerification];
-  const canVerify = !!s.studentEmail && s.emailVerification !== 'VERIFIED';
+  const [label, style] = demoBadge && s.emailVerification !== 'VERIFIED' ? [demoBadge, 'bg-amber-100 text-amber-900'] : PILL[s.emailVerification];
+  const canVerify = prompts && !!s.studentEmail && s.emailVerification !== 'VERIFIED';
 
   return (
     <div className="space-y-4 text-sm">
@@ -63,6 +68,9 @@ function StudentStatusBody({ s }: { s: StudentStatusView }) {
             </span>
           </div>
           <ul className="list-disc space-y-0.5 pl-5 text-xs text-slate-600">
+            {me?.admission.demoMode && s.emailVerification !== 'VERIFIED' && (
+              <li>Demo mode: university email verification is skipped for the hackathon. Your affiliation is self-declared and is not shown as verified.</li>
+            )}
             {s.notes.map((n) => (
               <li key={n}>{n}</li>
             ))}

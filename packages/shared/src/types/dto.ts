@@ -1,3 +1,4 @@
+import type { AdmissionView } from './community';
 import type {
   AssignmentStatus,
   DisputeCondition,
@@ -32,6 +33,8 @@ export interface MemberSummary {
   /** Student accounts: university code (public) and whether the university email was verified. */
   university?: string | null;
   universityEmailVerified?: boolean;
+  /** "Demo student" / "Demo member" when admitted through the demo-mode bypass (never a verified badge). */
+  demoBadge?: 'Demo student' | 'Demo member' | null;
 }
 
 export interface MemberProfile extends MemberSummary {
@@ -56,6 +59,7 @@ export interface Me {
   member: MemberProfile;
   permissions: PermissionCheck[];
   demoMode: boolean;
+  admission: AdmissionView;
   now: string;
 }
 

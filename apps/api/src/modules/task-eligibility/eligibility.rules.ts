@@ -1,6 +1,7 @@
 import type { EligibilityCheck, PermissionCheck, TaskEligibilityView, TrustTier } from '@commonhours/shared';
 import { POLICY } from '../../config/policy';
 import { AppError } from '../../core/errors';
+import { contactRequirementMet } from '../verification/verification.guards';
 
 /**
  * Task eligibility (pure, unit tested). Two different measures:
@@ -35,7 +36,8 @@ export function assertRequesterRequirements(tier: TrustTier, category: string, m
   }
 }
 
-export type ContactVerification = 'VERIFIED' | 'DEMO_VERIFIED' | 'UNVERIFIED';
+export type { ContactLevel as ContactVerification } from '../verification/verification.guards';
+import type { ContactLevel as ContactVerification } from '../verification/verification.guards';
 
 export interface EligibilityInputs {
   tier: TrustTier;
@@ -102,14 +104,17 @@ export function evaluateTaskEligibility(i: EligibilityInputs): TaskEligibilityVi
   }
 
   if (tier.requireVerifiedContact) {
-    const ok = i.provider.contact === 'VERIFIED' || (i.demoMode && i.provider.contact === 'DEMO_VERIFIED');
+    // Verification prerequisite: decided by the shared guard (demo mode bypasses it; nothing else here changes).
+    const { met: ok, bypassed } = contactRequirementMet(i.provider.contact, i.demoMode);
     checks.push({
       key: 'verifiedContact',
       label: 'Verified contact information',
       passed: ok,
       required: 'verified email or phone',
       current: i.provider.contact === 'VERIFIED' ? 'verified' : i.provider.contact === 'DEMO_VERIFIED' ? 'demo-verified (code shown on screen, not delivered)' : 'not verified',
-      explanation: ok
+      explanation: bypassed
+        ? 'Demo mode: the verified-contact prerequisite is skipped. Credibility and the owner’s approval still apply.'
+        : ok
         ? 'A contact method was verified with a one-time code.'
         : i.provider.contact === 'DEMO_VERIFIED'
           ? 'Demo verification does not count outside demo mode; verify with a delivered code.'

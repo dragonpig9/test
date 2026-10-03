@@ -24,6 +24,12 @@ enum AccountType {
   STUDENT
 }
 
+/// How the member joined: with an invitation (vouched by the inviter) or as a student without one.
+enum JoinRoute {
+  INVITATION
+  STUDENT
+}
+
 model Member {
   id           String       @id @default(cuid())
   handle       String       @unique
@@ -78,6 +84,14 @@ model Member {
   studentEmailVerifiedVia String?
   /// Self-declared current enrolment, separate from email ownership.
   studentDeclaredAt       DateTime?
+
+  // Admission (see modules/verification). Invited members are admitted by their invitation;
+  // student-route members by genuine university email verification (or the demo-mode bypass).
+  joinRoute           JoinRoute @default(INVITATION)
+  /// Set the first time the account used the DEMO_MODE verification bypass. Recorded separately
+  /// from genuine verification and never read to grant access (demo off = genuine rules again).
+  demoAdmittedAt      DateTime?
+  demoAdmissionReason String?
 
   invitationsSent      Invitation[]            @relation("InvitationInviter")
   invitationAccepted   Invitation?             @relation("InvitationAcceptedBy")

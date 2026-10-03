@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Dispute, DisputeOutcome, DisputeStatus, Prisma, VoteChoice } from '@prisma/client';
 import type { OpenDisputeInput } from '@commonhours/shared';
-import { env } from '../../config/env';
+import { isDemoMode } from '../../config/demo-mode';
 import { POLICY, RULES } from '../../config/policy';
 import type { Ctx } from '../../core/context';
 import { addDays } from '../../core/dates';
@@ -169,7 +169,7 @@ export async function computeEligibility(db: Db, disputeId: string, now: Date) {
 
 function selectionSeed(d: { exchange: { scheduledAt: Date; provider: { handle: string }; recipient: { handle: string } } }, round: number) {
   // Demo mode: reproducible seed derived from stable data (not database ids), so a reset replays identically.
-  if (env.demoMode) return `${POLICY.attestation.demoSeed}:${d.exchange.provider.handle}-${d.exchange.recipient.handle}:${d.exchange.scheduledAt.toISOString()}:round${round}`;
+  if (isDemoMode()) return `${POLICY.attestation.demoSeed}:${d.exchange.provider.handle}-${d.exchange.recipient.handle}:${d.exchange.scheduledAt.toISOString()}:round${round}`;
   return randomBytes(16).toString('hex');
 }
 

@@ -18,6 +18,7 @@ import { ActivityPage } from './features/audit/ActivityPage';
 import { AccountPage } from './features/withdrawal/AccountPage';
 import { NotificationsPage } from './features/notifications/NotificationsPage';
 import { ProfilePage } from './features/profiles/ProfilePage';
+import { VerificationGate } from './features/verification/VerificationGate';
 
 // The debug panel is development-only and loaded lazily so it never ships in production bundles' main chunk.
 const DebugPanel = lazy(() => import('./features/debug/DebugPanel'));
@@ -25,7 +26,7 @@ const SHOW_DEBUG = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEBUG === 
 
 /** Routing only. Each page lives in its feature folder. */
 export function App() {
-  const { signedIn, loading } = useAuth();
+  const { signedIn, loading, me } = useAuth();
   if (loading) return <Loading label="Signing you in…" />;
   if (!signedIn) {
     return (
@@ -35,6 +36,8 @@ export function App() {
       </Routes>
     );
   }
+  // Normal mode: student-route accounts verify first. Demo mode never shows this screen.
+  if (me?.admission.verificationRequired) return <VerificationGate />;
   return (
     <Layout>
       <Routes>

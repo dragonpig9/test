@@ -2,9 +2,10 @@ import type { Member } from '@prisma/client';
 import type { MemberProfile, MemberSummary } from '@commonhours/shared';
 import type { Db } from '../../core/db';
 import { AppError, notFound } from '../../core/errors';
+import { demoBadgeOf, hasGenuineStudentVerification } from '../verification/verification.guards';
 
 type SummaryInput = Pick<Member, 'id' | 'handle' | 'displayName' | 'status' | 'isBootstrap'> &
-  Partial<Pick<Member, 'photoUrl' | 'affiliation' | 'location' | 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt' | 'university' | 'studentEmailVerifiedAt' | 'studentEmailVerifiedVia'>>;
+  Partial<Pick<Member, 'photoUrl' | 'affiliation' | 'location' | 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt' | 'university' | 'studentEmailVerifiedAt' | 'studentEmailVerifiedVia' | 'accountType' | 'demoAdmittedAt'>>;
 
 /** Contact verification as a label: only "VERIFIED" when a code was really delivered and confirmed. */
 export function contactVerificationOf(m: Partial<Pick<Member, 'contactEmailVerifiedAt' | 'contactEmailVerifiedVia' | 'phoneVerifiedAt'>>) {
@@ -25,7 +26,13 @@ export function toSummary(m: SummaryInput): MemberSummary {
     contactVerification: contactVerificationOf(m),
     university: m.university ?? null,
     // Public flag is true only for a real delivered code ("email-code"), never a development preview.
-    universityEmailVerified: !!m.studentEmailVerifiedAt && m.studentEmailVerifiedVia === 'email-code',
+    universityEmailVerified: hasGenuineStudentVerification({ studentEmailVerifiedAt: m.studentEmailVerifiedAt ?? null, studentEmailVerifiedVia: m.studentEmailVerifiedVia ?? null }),
+    demoBadge: demoBadgeOf({
+      accountType: m.accountType ?? 'STANDARD',
+      demoAdmittedAt: m.demoAdmittedAt ?? null,
+      studentEmailVerifiedAt: m.studentEmailVerifiedAt ?? null,
+      studentEmailVerifiedVia: m.studentEmailVerifiedVia ?? null,
+    }),
   };
 }
 

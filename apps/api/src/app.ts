@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { Prisma } from '@prisma/client';
+import { demoModeStatus } from './config/demo-mode';
 import { env } from './config/env';
 import { AppError } from './core/errors';
 import { logRequest } from './core/request-log';
@@ -11,6 +12,7 @@ import { communityPoolRouter } from './modules/community-pool/community-pool.rou
 import { dailyJobRouter } from './modules/daily-job/daily-job.routes';
 import { studentRouter } from './modules/student/student.routes';
 import { contextMiddleware, requireAuth } from './modules/auth/auth.middleware';
+import { requireAdmission } from './modules/verification/verification.middleware';
 import { authRouter } from './modules/auth/auth.routes';
 import { conflictsRouter, disputesRouter } from './modules/attestation/attestation.routes';
 import { credibilityRouter } from './modules/credibility/credibility.routes';
@@ -61,13 +63,17 @@ export function createApp() {
     next();
   });
 
-  app.get('/api/health', (req, res) => res.json({ ok: true, now: req.ctx.now, demoMode: env.demoMode }));
+  // Public configuration the web app reads before sign-in. demoMode comes only from the server's DEMO_MODE.
+  app.get('/api/health', (req, res) => res.json({ ok: true, now: req.ctx.now, demoMode: demoModeStatus().enabled, demo: demoModeStatus() }));
   app.use('/api/auth', authRouter);
   app.use('/api/invitations/code', publicInvitationsRouter);
-  if (env.demoMode) app.use('/api/demo', demoRouter);
+  // The router itself refuses every request while demo mode is off.
+  app.use('/api/demo', demoRouter);
 
   const authed = express.Router();
   authed.use(requireAuth);
+  // Re-checked on every request: stale sessions cannot keep a bypass after demo mode is switched off.
+  authed.use(requireAdmission);
   authed.use('/members', membersRouter);
   authed.use('/invitations', invitationsRouter);
   authed.use('/vouches', vouchesRouter);

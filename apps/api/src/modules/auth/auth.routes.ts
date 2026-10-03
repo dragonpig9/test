@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { joinSchema, loginSchema } from '@commonhours/shared';
-import { env } from '../../config/env';
+import { isDemoMode } from '../../config/demo-mode';
 import { prisma, withTx } from '../../core/db';
 import { actorId, ah, parseBody } from '../../core/http';
 import { permissionsOf } from '../credibility/credibility.service';
 import { joinWithInvitation } from '../invitations/invitation.service';
 import { getMember, toProfile } from '../members/member.repo';
 import { requestStudentEmailCode } from '../student/student.verification';
+import { admissionView } from '../verification/verification.guards';
 import { login, signToken } from './auth.service';
 
 export const authRouter = Router();
@@ -48,7 +49,8 @@ authRouter.get(
     res.json({
       member: toProfile(me),
       permissions: await permissionsOf(prisma, me.id, req.ctx.now),
-      demoMode: env.demoMode,
+      demoMode: isDemoMode(),
+      admission: admissionView(me, isDemoMode()),
       now: req.ctx.now.toISOString(),
     });
   }),

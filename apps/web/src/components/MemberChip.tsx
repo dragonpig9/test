@@ -57,6 +57,16 @@ export function VerifiedBadge({ status }: { status?: MemberSummary['contactVerif
   return null;
 }
 
+/** Shown instead of a verified badge for accounts admitted through the demo-mode verification bypass. */
+export function DemoBadge({ label }: { label?: MemberSummary['demoBadge'] }) {
+  if (!label) return null;
+  return (
+    <span className="rounded bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-900" title="Admitted in demo mode: verification was skipped, nothing was verified.">
+      {label}
+    </span>
+  );
+}
+
 export function MemberChip({ m, suffix, detail }: { m: MemberSummary; suffix?: string; detail?: boolean }) {
   const extra = detail ? [m.affiliation, m.neighborhood].filter(Boolean).join(' · ') : '';
   return (
@@ -65,6 +75,7 @@ export function MemberChip({ m, suffix, detail }: { m: MemberSummary; suffix?: s
       <span className="font-medium text-slate-900">{m.displayName}</span>
       {m.status === 'LEFT' && <span className="rounded bg-slate-200 px-1.5 text-[10px] font-semibold uppercase text-slate-600">left</span>}
       {detail && <VerifiedBadge status={m.contactVerification} />}
+      {detail && <DemoBadge label={m.demoBadge} />}
       {extra && <span className="text-xs text-slate-500">{extra}</span>}
       {suffix && <span className="text-xs text-slate-500">{suffix}</span>}
     </span>

@@ -16,6 +16,22 @@ export interface StudentStatusView {
   devPreviewDelivery: boolean;
 }
 
+/** Admission and verification state for the signed-in member (GET /auth/me). */
+export interface AdmissionView {
+  /** Server-side DEMO_MODE flag (read-only for clients). */
+  demoMode: boolean;
+  admitted: boolean;
+  admittedVia: 'INVITATION' | 'VERIFIED_EMAIL' | 'DEMO_BYPASS' | null;
+  /** Normal mode only: show the verification screen instead of the app. */
+  verificationRequired: boolean;
+  studentVerificationPending: boolean;
+  /** False in demo mode: no verification banners or prompts. */
+  showVerificationPrompts: boolean;
+  universityAccess: { university: string | null; allowed: boolean; via: 'VERIFIED_EMAIL' | 'DEMO_SELF_DECLARED' | null; reason: string };
+  /** "Demo student" / "Demo member" for accounts admitted through the demo bypass; never a verified badge. */
+  demoBadge: 'Demo student' | 'Demo member' | null;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   member: MemberSummary;

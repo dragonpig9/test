@@ -35,6 +35,8 @@ export type ErrorCode =
   | 'DEMO_DISABLED'
   | 'CONFLICT'
   | 'RATE_LIMITED'
+  | 'VERIFICATION_REQUIRED'
+  | 'CIRCLE_ACCESS_DENIED'
   | 'INTERNAL_ERROR';
 
 export interface ApiErrorBody {
